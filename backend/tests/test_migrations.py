@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 
 import pytest
 from alembic.config import Config
@@ -9,14 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from alembic import command
 from app.models import User
-
-ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
-
-
-def alembic_config(url: str) -> Config:
-    cfg = Config(str(ALEMBIC_INI))
-    cfg.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
-    return cfg
+from tests.helpers import alembic_config
 
 
 async def run_alembic(fn, cfg: Config, *args: str) -> None:  # type: ignore[no-untyped-def]
