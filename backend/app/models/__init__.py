@@ -12,6 +12,7 @@ from app.models.reference import (
     Lens,
     RefKind,
 )
+from app.models.rolls import Roll
 
 __all__ = [
     "AppSettings",
@@ -25,6 +26,7 @@ __all__ = [
     "Lens",
     "PersonalAccessToken",
     "RefKind",
+    "Roll",
     "User",
     "UserSession",
 ]
