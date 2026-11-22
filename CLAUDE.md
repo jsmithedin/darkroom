@@ -37,3 +37,13 @@ uv run alembic -c backend/alembic.ini revision --autogenerate -m "msg"
 - One service layer (`services/`) owns derived figures and invariants; REST and MCP are thin adapters.
 - External URLs come from `PUBLIC_BASE_URL`, never request headers.
 - Work follows the plan's steps (TDD), one commit per task with the message given in the issue.
+
+## Workflow (GitHub issues and PRs)
+
+- Every plan task is a GitHub issue (`gh issue list`, `gh issue view N`). Work from the issue: follow its steps in order.
+- One branch and one PR per task (or per tightly related group), branched from an up-to-date `main`, named like `task-1.1-google-login`. Never push to `main` directly.
+- Keep issues current as you go: tick completed steps in the issue body, comment on findings, deviations from the plan, or blockers, and comment with the commit/PR when done.
+- PR body links the issue with `Closes #N` (use `Refs #N` if a manual step remains, and leave the issue open until it is verified). Issues close when the PR merges.
+- If the work changes how things run or are laid out, update this file, the README and `docs/notes/` in the same PR.
+- Run `uv run pytest`, ruff and mypy (plus `npm run typecheck` for frontend work) before opening the PR.
+
