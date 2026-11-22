@@ -28,7 +28,7 @@ PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck and build) and `image` (Docker build, import smoke test, compose has no published ports). `main` requires all three to pass.
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).
 
 ## Google sign-in setup
 
