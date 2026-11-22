@@ -16,9 +16,9 @@ from alembic import command
 from app.config import Settings
 from app.main import create_app
 from tests.helpers import alembic_config
-from tests.support import authed, bearer_client, oidc, scoped
+from tests.support import authed, bearer_client, gear, oidc, scoped
 
-__all__ = ["authed", "bearer_client", "oidc", "scoped"]
+__all__ = ["authed", "bearer_client", "gear", "oidc", "scoped"]
 
 
 @pytest.fixture(scope="session")
@@ -70,7 +70,7 @@ async def engine(postgres_url: str) -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+async def db_session(engine: AsyncEngine, migrated_db: str) -> AsyncIterator[AsyncSession]:
     """Session whose work is rolled back at the end of the test."""
     async with engine.connect() as conn:
         trans = await conn.begin()

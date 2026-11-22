@@ -8,44 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.models import Roll
-
-
-@pytest.fixture
-async def gear(authed: AsyncClient) -> dict[str, str]:
-    """One of each reference item, as ids."""
-
-    async def make(kind: str, body: dict[str, Any]) -> str:
-        resp = await authed.post(f"/api/{kind}", json=body)
-        assert resp.status_code == 201, resp.text
-        return str(resp.json()["id"])
-
-    formats = {f["name"]: f["id"] for f in (await authed.get("/api/formats")).json()}
-    return {
-        "camera": await make("cameras", {"name": "Nikon FM2"}),
-        "camera2": await make("cameras", {"name": "Olympus XA", "fixed_lens": True}),
-        "lens": await make("lenses", {"name": "50mm f/1.8"}),
-        "film": await make("films", {"name": "Tri-X", "type": "bw", "box_iso": 400}),
-        "film2": await make("films", {"name": "Portra", "type": "colour", "box_iso": 160}),
-        "developer": await make("developers", {"name": "HC-110"}),
-        "developer2": await make("developers", {"name": "Rodinal"}),
-        "filter": await make("filters", {"name": "Yellow"}),
-        "format35": formats["35mm"],
-        "format120": formats["120"],
-    }
-
-
-def roll(g: dict[str, str], **over: Any) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "dev_date": "2026-11-01",
-        "camera_id": g["camera"],
-        "lens_id": g["lens"],
-        "format_id": g["format35"],
-        "film_id": g["film"],
-        "ei": 400,
-        "developer_id": g["developer"],
-    }
-    body.update(over)
-    return body
+from tests.support import roll_body as roll
 
 
 async def add(authed: AsyncClient, g: dict[str, str], **over: Any) -> dict[str, Any]:
