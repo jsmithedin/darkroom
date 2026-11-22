@@ -13,7 +13,7 @@ export function AppShell() {
       <header className="topbar">
         <strong className="brand">Darkroom</strong>
         <nav aria-label="Main">
-          <NavLink to="/" end>Home</NavLink>
+          <NavLink to="/" end>Log</NavLink>
           <NavLink to="/reference">Reference</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
