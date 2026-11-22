@@ -10,6 +10,7 @@ from app.auth.identity import Principal
 from app.models import Roll
 from app.models.reference import MODELS, RefKind
 from app.schemas.rolls import RollIn, RollUpdate
+from app.services.stock import Pair, assert_non_negative, lock_pairs
 
 
 class NotFoundError(Exception):
@@ -72,7 +73,13 @@ async def create_roll(db: AsyncSession, actor: Principal, data: RollIn) -> Roll:
     values = data.model_dump()
     await _check_refs(db, values, None)
     roll = Roll(**values, created_by=actor.user_id, updated_by=actor.user_id)
+    pair: Pair = (roll.film_id, roll.format_id)
+    # A roll that counts against stock must have a roll to use; lock, write, then verify.
+    before = await lock_pairs(db, [pair]) if roll.counts_against_stock else {}
     db.add(roll)
+    await db.flush()
+    if roll.counts_against_stock:
+        await assert_non_negative(db, [pair], before)
     await db.commit()
     await db.refresh(roll)
     return roll
@@ -84,9 +91,23 @@ async def update_roll(
     roll = await get_roll(db, roll_id)
     values = data.model_dump(exclude_unset=True)
     await _check_refs(db, values, roll)
+
+    old_pair: Pair = (roll.film_id, roll.format_id)
+    old_counts = roll.counts_against_stock
+    new_pair: Pair = (
+        values.get("film_id", roll.film_id),
+        values.get("format_id", roll.format_id),
+    )
+    new_counts = values.get("counts_against_stock", old_counts)
+    before = await lock_pairs(db, [old_pair, new_pair])
+
     for key, value in values.items():
         setattr(roll, key, value)
     roll.updated_by = actor.user_id
+    await db.flush()
+    # Stock only falls if the roll now counts against a pair it did not count against before.
+    if new_counts and (not old_counts or new_pair != old_pair):
+        await assert_non_negative(db, [new_pair], before)
     await db.commit()
     await db.refresh(roll)
     return roll
