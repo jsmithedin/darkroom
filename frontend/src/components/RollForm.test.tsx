@@ -1,8 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { type MockApi, installMockApi } from "../test/mockApi";
+import { renderApp } from "../test/render";
 import { RollForm } from "./RollForm";
 
 const ref = (id: string, name: string, extra: object = {}) => ({
@@ -41,18 +40,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderForm() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const user = userEvent.setup();
-  render(
-    <QueryClientProvider client={client}>
-      <RollForm />
-    </QueryClientProvider>,
-  );
-  return user;
+  return renderApp(<RollForm />).user;
 }
 
 /** Wait for the reference lists to load, then pick options by label. */
-async function choose(user: ReturnType<typeof userEvent.setup>, label: string, option: string) {
+async function choose(user: Awaited<ReturnType<typeof renderApp>>["user"], label: string, option: string) {
   const select = screen.getByLabelText(label);
   await waitFor(() => expect(screen.getByRole("option", { name: option })).toBeInTheDocument());
   await user.selectOptions(select, option);

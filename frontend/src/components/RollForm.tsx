@@ -11,6 +11,7 @@ import {
 } from "../api/rolls";
 import { formatStops, stopsVsBox } from "../lib/stops";
 import { applyCameraDefaults, loadSetup, saveSetup } from "../lib/setup";
+import { ErrorNote } from "./ErrorNote";
 import { RefSelect } from "./RefSelect";
 
 const EI_PATTERN = /^\d{1,5}(\.\d{1,2})?$/;
@@ -124,7 +125,6 @@ export function RollForm({ roll, onDone }: Props) {
     });
   }
 
-  const error = localError || mutation.error?.message || "";
 
   return (
     <form onSubmit={submit} className="stack" aria-label={editing ? "Edit roll" : "Log a roll"}>
@@ -241,11 +241,12 @@ export function RollForm({ roll, onDone }: Props) {
         )}
       </div>
       {saved && <p role="status">Roll logged.</p>}
-      {error && (
+      {localError && (
         <p role="alert" className="error">
-          {error}
+          {localError}
         </p>
       )}
+      <ErrorNote error={mutation.error} />
       {remove.isError && (
         <p role="alert" className="error">
           {remove.error.message}

@@ -9,6 +9,8 @@ export interface MockApi {
   /** camera id -> its most recent roll (what /last-roll returns) */
   lastRolls: Record<string, Json>;
   calls: { method: string; url: string; body?: Json }[];
+  /** Answers first; return undefined to fall through to the built-in reference/roll routes. */
+  handler?: (url: string, method: string, body?: Json) => Response | undefined;
 }
 
 export const reply = (body: unknown, status = 200) =>
@@ -29,6 +31,8 @@ export function installMockApi(initial: Partial<MockApi> = {}): MockApi {
       const method = init.method ?? "GET";
       const body = init.body ? (JSON.parse(init.body as string) as Json) : undefined;
       api.calls.push({ method, url, body });
+      const custom = api.handler?.(url, method, body);
+      if (custom) return custom;
       const [path] = url.split("?");
 
       const list = path.match(/^\/api\/(cameras|lenses|formats|films|developers|filters)$/);

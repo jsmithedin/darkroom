@@ -2,7 +2,7 @@
 
 Self-hosted film photography tracker: REST API, mobile-first React PWA and an authenticated MCP server, replacing the "Film Photography Tracker v2" Google Sheet. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plan.
 
-Status: Phase 1 in progress. Google sign-in, sessions, CSRF and personal access tokens and the sign-in and token screens, reference lists and the roll log screen work; stock, bulk, stats and MCP are still to come.
+Status: Phase 1 in progress. Google sign-in, sessions, CSRF and personal access tokens and the sign-in and token screens, reference lists, the roll log, stock, purchases and bulk film screens work; stats, import and MCP are still to come.
 
 ## Local development
 
