@@ -59,6 +59,12 @@ Each deploy: checks out the exact commit CI tested, runs `docker compose up -d -
 
 Keep the repo private and do not enable "run workflows from fork pull requests" for it. Restrict the runner to this repository.
 
+### Verifying the first deploy
+
+1. Merge a trivial change (for example a README edit) to `main` and watch the Deploy run in the Actions tab: it should run on the `nuc` runner and finish green, with "app healthy" and "public health ok" in the log.
+2. Confirm `https://film.jamielab.uk/api/health` still returns `{"status":"ok","db":true}` and that you are still signed in (data survived).
+3. Check that a failing CI run does not deploy: push a branch with a deliberate test failure, merge it only to see the Deploy workflow is skipped (or, safer, confirm in the Actions tab that Deploy only appears for `main` runs of CI that concluded `success`). Revert the change afterwards.
+
 ### Rolling back
 
 Revert the bad commit through a PR and merge it; the deploy runs again. In an emergency, on the NUC: check out the previous good commit in any clone and run `COMPOSE_PROJECT_NAME=darkroom docker compose --env-file /opt/darkroom/.env up -d --build`. Migrations are not reversed automatically, so a rollback across a migration needs `alembic downgrade` by hand.
