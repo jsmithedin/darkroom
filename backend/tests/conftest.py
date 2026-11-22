@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -15,6 +16,9 @@ from alembic import command
 from app.config import Settings
 from app.main import create_app
 from tests.helpers import alembic_config
+from tests.support import authed, bearer_client, oidc, scoped
+
+__all__ = ["authed", "bearer_client", "oidc", "scoped"]
 
 
 @pytest.fixture(scope="session")
@@ -41,6 +45,23 @@ def migrated_db(postgres_url: str) -> str:
     return postgres_url
 
 
+KEEP_TABLES = {"alembic_version", "users", "formats", "settings"}
+SEED_FORMATS = ("35mm", "120", "110")
+
+
+async def reset_db(conn: AsyncConnection) -> None:
+    """Return the database to its freshly migrated state (seed rows kept, everything else gone)."""
+    rows = await conn.execute(text("select tablename from pg_tables where schemaname = 'public'"))
+    tables = [r[0] for r in rows if r[0] not in KEEP_TABLES]
+    if tables:
+        await conn.execute(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
+    await conn.execute(text("DELETE FROM users"))  # sessions and tokens cascade
+    await conn.execute(text("DELETE FROM formats WHERE name NOT IN ('35mm', '120', '110')"))
+    await conn.execute(
+        text("UPDATE settings SET leader_mm = 250, frame_pitch_mm = 38, timezone = 'Europe/London'")
+    )
+
+
 @pytest.fixture
 async def engine(postgres_url: str) -> AsyncIterator[AsyncEngine]:
     eng = create_async_engine(postgres_url)
@@ -65,7 +86,7 @@ async def client(
     test_settings: Settings, engine: AsyncEngine, migrated_db: str
 ) -> AsyncIterator[AsyncClient]:
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE users CASCADE"))
+        await reset_db(conn)
     app = create_app(test_settings)
     app.state.engine = engine
     async with AsyncClient(

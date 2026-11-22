@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import PersonalAccessToken
-from tests.auth.conftest import ORIGIN, make_token, sign_in
+from tests.support import ORIGIN, make_token, sign_in
 
 pytestmark = pytest.mark.usefixtures("oidc", "scoped")
 

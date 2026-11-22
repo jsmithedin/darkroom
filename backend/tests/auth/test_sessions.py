@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.auth.sessions import ABSOLUTE, SLIDING
 from app.models import User, UserSession
-from tests.auth.conftest import sign_in
+from tests.support import sign_in
 
 
 async def backdate(engine: AsyncEngine, **values: datetime) -> None:

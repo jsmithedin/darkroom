@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.auth.google import Identity
 from app.models import User, UserSession
-from tests.auth.conftest import ORIGIN, FakeOIDC, sign_in, start_login
+from tests.support import ORIGIN, FakeOIDC, sign_in, start_login
 
 pytestmark = pytest.mark.usefixtures("oidc")
 
