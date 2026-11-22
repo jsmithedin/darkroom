@@ -53,4 +53,5 @@ Anything imported by `backend/app` belongs in `dependencies`, not the `dev` grou
 - PR body links the issue with `Closes #N` (use `Refs #N` if a manual step remains, and leave the issue open until it is verified). Issues close when the PR merges.
 - If the work changes how things run or are laid out, update this file, the README and `docs/notes/` in the same PR.
 - Run `uv run pytest`, ruff and mypy (plus `npm run typecheck` for frontend work) before opening the PR.
+- CI (`.github/workflows/ci.yml`) runs three jobs on every PR and push to `main`: `backend` (ruff, format check, mypy, pytest), `frontend` (typecheck, build) and `image` (docker build, import `app.main`, compose has no `ports:`). `main` is protected: changes land by PR with all three green. If CI fails, fix it before asking for a merge; do not bypass the protection.
 
