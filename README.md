@@ -30,6 +30,39 @@ PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).
 
+## Automatic deploys (self-hosted runner on the NUC)
+
+`.github/workflows/deploy.yml` deploys `main` after CI passes on a push to `main`. It runs on a GitHub Actions runner installed on the NUC, which only makes outbound connections to GitHub, so nothing extra is exposed. It never runs for pull requests.
+
+Each deploy: checks out the exact commit CI tested, runs `docker compose up -d --build` with the NUC's env file, waits for `/api/health` inside the container (up to 60 s), then checks the public URL. Migrations run when the container starts. A failure prints the app logs and fails the run.
+
+### One-off setup on the NUC
+
+1. Create a user for the runner and put it in the `docker` group (it can then control Docker, so treat it as privileged):
+   ```
+   sudo useradd -m -s /bin/bash -G docker gh-runner
+   ```
+2. Move the real env file somewhere outside any checkout that the runner user can read, and lock it down:
+   ```
+   sudo install -d -o gh-runner -g gh-runner -m 700 /opt/darkroom
+   sudo cp /path/to/current/.env /opt/darkroom/.env
+   sudo chown gh-runner:gh-runner /opt/darkroom/.env && sudo chmod 600 /opt/darkroom/.env
+   ```
+3. Install the runner as that user. In GitHub: repo, Settings, Actions, Runners, New self-hosted runner (Linux x64). Follow the download and `./config.sh` commands it shows, adding the label `nuc` (`./config.sh --url ... --token ... --labels nuc`). Then install it as a service:
+   ```
+   sudo ./svc.sh install gh-runner && sudo ./svc.sh start
+   ```
+4. Set repo variables (Settings, Secrets and variables, Actions, Variables):
+   - `DEPLOY_ENV_FILE` = `/opt/darkroom/.env`
+   - `DEPLOY_HEALTH_URL` = `https://film.jamielab.uk/api/health`
+5. The compose project name is pinned to `darkroom` so the existing database volume (`darkroom_dbdata`) is reused. If your current stack has a different project name, change `COMPOSE_PROJECT_NAME` in the workflow to match, or the deploy will start a fresh, empty database. Stop the old manually-started stack first (`docker compose down`, without `-v`) so the two do not fight over container names.
+
+Keep the repo private and do not enable "run workflows from fork pull requests" for it. Restrict the runner to this repository.
+
+### Rolling back
+
+Revert the bad commit through a PR and merge it; the deploy runs again. In an emergency, on the NUC: check out the previous good commit in any clone and run `COMPOSE_PROJECT_NAME=darkroom docker compose --env-file /opt/darkroom/.env up -d --build`. Migrations are not reversed automatically, so a rollback across a migration needs `alembic downgrade` by hand.
+
 ## Google sign-in setup
 
 In Google Cloud Console create an OAuth client (type: Web application) and add these redirect URIs:
