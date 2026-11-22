@@ -3,7 +3,8 @@ import { type RefItem, type RefKind, useRefItems } from "../api/reference";
 interface Props {
   kind: RefKind;
   value: string;
-  onChange: (id: string) => void;
+  /** Called with the chosen id and, when one was chosen, the full item. */
+  onChange: (id: string, item?: RefItem) => void;
   label: string;
   /** Text for the empty choice; leave out to require a value. */
   emptyLabel?: string;
@@ -23,7 +24,7 @@ export function RefSelect({ kind, value, onChange, label, emptyLabel, required }
       {label}
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.target.value, data.find((i) => i.id === e.target.value))}
         required={required}
         disabled={isPending || isError}
       >
