@@ -35,6 +35,7 @@ beforeEach(() => {
       formats: [{ id: "m35", name: "35mm", archived_at: null }],
     },
     handler: (url, method, body) => {
+      if (url === "/api/bulk-rolls" && method === "POST") return reply({ ...spools[0], ...body }, 201);
       if (url.startsWith("/api/bulk-rolls")) return reply(spools);
       if (url === "/api/settings") {
         return reply({ leader_mm: 250, frame_pitch_mm: 38, timezone: "Europe/London" });
@@ -68,10 +69,11 @@ afterEach(() => vi.unstubAllGlobals());
 
 const post = () => api.calls.find((c) => c.method === "POST" && c.url === "/api/stock-movements");
 
-it("offers Bought, Loaded from bulk and Given away modes", async () => {
+it("offers Bought, Bulk spool, Loaded from bulk and Given away modes", async () => {
   const { user } = renderApp(<Purchases />);
   const tabs = within(screen.getByRole("tablist"));
   expect(tabs.getByRole("tab", { name: "Bought" })).toHaveAttribute("aria-selected", "true");
+  expect(tabs.getByRole("tab", { name: "Bulk spool" })).toBeInTheDocument();
   expect(tabs.getByRole("tab", { name: "Loaded from bulk" })).toBeInTheDocument();
   expect(tabs.getByRole("tab", { name: "Given away" })).toBeInTheDocument();
 
@@ -173,4 +175,50 @@ it("prefills film and format from the link on a refused write", async () => {
   renderApp(<Purchases />, "/purchases?film=f1&format=m35");
   await waitFor(() => expect(screen.getByLabelText("Film")).toHaveValue("f1"));
   expect(screen.getByLabelText("Format")).toHaveValue("m35");
+});
+
+it("records a bought bulk spool, converting metres and pounds exactly", async () => {
+  api.refs.films = [{ id: "f1", name: "Fomapan 100", archived_at: null }];
+  const { user } = renderApp(<Purchases />);
+  await user.click(screen.getByRole("tab", { name: "Bulk spool" }));
+  const form = screen.getByRole("form", { name: "Add spool" });
+  // a new spool has nothing used before tracking and cannot already be finished
+  expect(within(form).queryByLabelText("Used before tracking (m)")).not.toBeInTheDocument();
+  expect(within(form).queryByLabelText("Finished")).not.toBeInTheDocument();
+
+  await waitFor(() => expect(within(form).getByRole("option", { name: "Fomapan 100" })).toBeInTheDocument());
+  await user.type(within(form).getByLabelText("Label"), "Bulk 2");
+  await user.selectOptions(within(form).getByLabelText("Film"), "Fomapan 100");
+  await user.type(within(form).getByLabelText("Length (m)"), "30.48");
+  await user.type(within(form).getByLabelText("Price (£, optional)"), "30");
+  await user.click(within(form).getByRole("button", { name: "Record spool" }));
+
+  expect(await screen.findByText(/Spool recorded/)).toBeInTheDocument();
+  const create = api.calls.find((c) => c.method === "POST" && c.url === "/api/bulk-rolls")!;
+  expect(create.body).toMatchObject({
+    label: "Bulk 2",
+    film_id: "f1",
+    length_mm: 30480,
+    cost_pence: 3000,
+    supplier: null,
+    used_before_mm: 0,
+    finished: false,
+  });
+  expect(create.body?.bought_on).toMatch(/^\d{4}-\d{2}-\d{2}$/); // defaults to today
+  // the form is cleared ready for the next one
+  expect(screen.getByLabelText("Label")).toHaveValue("");
+});
+
+it("an unpriced spool needs no price, but a bad price is refused", async () => {
+  api.refs.films = [{ id: "f1", name: "Fomapan 100", archived_at: null }];
+  const { user } = renderApp(<Purchases />);
+  await user.click(screen.getByRole("tab", { name: "Bulk spool" }));
+  const form = screen.getByRole("form", { name: "Add spool" });
+  await waitFor(() => expect(within(form).getByRole("option", { name: "Fomapan 100" })).toBeInTheDocument());
+  await user.type(within(form).getByLabelText("Label"), "Bulk 3");
+  await user.selectOptions(within(form).getByLabelText("Film"), "Fomapan 100");
+  await user.type(within(form).getByLabelText("Length (m)"), "17");
+  expect(within(form).getByRole("button", { name: "Record spool" })).toBeEnabled();
+  await user.type(within(form).getByLabelText("Price (£, optional)"), "abc");
+  expect(within(form).getByRole("button", { name: "Record spool" })).toBeDisabled();
 });

@@ -35,7 +35,7 @@ beforeEach(() => {
       }
       if (url === "/api/settings" && method === "PATCH") return reply(body);
       if (url.startsWith("/api/bulk-rolls") && method === "GET") return reply([spool]);
-      if (url === "/api/bulk-rolls" && method === "POST") return reply({ ...spool, ...body }, 201);
+      if (url === "/api/bulk-rolls/b1" && method === "PATCH") return reply({ ...spool, ...body });
       if (url === "/api/bulk-rolls/b1" && method === "DELETE") {
         return deleteRefusal
           ? reply({ detail: "'Bulk 1' has 2 cassette load(s) recorded against it." }, 409)
@@ -78,43 +78,25 @@ it("lists spools with their meter and unpriced status", async () => {
   expect(within(list).getByText(/185 exposures left/)).toBeInTheDocument();
 });
 
-it("adds a spool, converting metres and pounds exactly, with optional fields empty", async () => {
-  const { user } = renderApp(<SettingsBulk />);
-  await user.click(await screen.findByRole("button", { name: "Add spool" }));
-  const form = screen.getByRole("form", { name: "Add spool" });
-  await waitFor(() => expect(within(form).getByRole("option", { name: "Fomapan 100" })).toBeInTheDocument());
-  await user.type(within(form).getByLabelText("Label"), "Bulk 2");
-  await user.selectOptions(within(form).getByLabelText("Film"), "Fomapan 100");
-  await user.type(within(form).getByLabelText("Length (m)"), "30.48");
-  await user.type(within(form).getByLabelText("Price (£, optional)"), "30");
-  await user.click(within(form).getByRole("button", { name: "Add spool" }));
-
-  await waitFor(() => expect(screen.queryByRole("form", { name: "Add spool" })).not.toBeInTheDocument());
-  const post = api.calls.find((c) => c.method === "POST" && c.url === "/api/bulk-rolls")!;
-  expect(post.body).toEqual({
-    label: "Bulk 2",
-    film_id: "f1",
-    length_mm: 30480,
-    cost_pence: 3000,
-    supplier: null,
-    bought_on: null,
-    used_before_mm: 0,
-    finished: false,
-    notes: null,
-  });
+it("points to Purchases for buying a new spool, and has no add button", async () => {
+  renderApp(<SettingsBulk />);
+  await screen.findByText("Bulk 1");
+  expect(screen.queryByRole("button", { name: "Add spool" })).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Purchases" })).toHaveAttribute("href", "/purchases");
 });
 
-it("an unpriced spool needs no price", async () => {
+it("edits a spool, keeping the used-before-tracking and finished fields", async () => {
   const { user } = renderApp(<SettingsBulk />);
-  await user.click(await screen.findByRole("button", { name: "Add spool" }));
-  const form = screen.getByRole("form", { name: "Add spool" });
-  await waitFor(() => expect(within(form).getByRole("option", { name: "Fomapan 100" })).toBeInTheDocument());
-  await user.type(within(form).getByLabelText("Label"), "Bulk 3");
-  await user.selectOptions(within(form).getByLabelText("Film"), "Fomapan 100");
-  await user.type(within(form).getByLabelText("Length (m)"), "17");
-  expect(within(form).getByRole("button", { name: "Add spool" })).toBeEnabled();
-  await user.type(within(form).getByLabelText("Price (£, optional)"), "abc");
-  expect(within(form).getByRole("button", { name: "Add spool" })).toBeDisabled();
+  await screen.findByText("Bulk 1");
+  await user.click(screen.getByRole("button", { name: "Edit" }));
+  const form = screen.getByRole("form", { name: "Edit spool" });
+  expect(within(form).getByLabelText("Used before tracking (m)")).toHaveValue("9.7");
+  expect(within(form).getByLabelText("Finished")).not.toBeChecked();
+  await user.click(within(form).getByLabelText("Finished"));
+  await user.click(within(form).getByRole("button", { name: "Save spool" }));
+  await waitFor(() => expect(screen.queryByRole("form", { name: "Edit spool" })).not.toBeInTheDocument());
+  const patch = api.calls.find((c) => c.method === "PATCH" && c.url === "/api/bulk-rolls/b1")!;
+  expect(patch.body).toMatchObject({ finished: true, used_before_mm: 9700, length_mm: 17000 });
 });
 
 it("deleting a spool with loads shows the server's refusal", async () => {

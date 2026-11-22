@@ -14,12 +14,14 @@ import {
 import { BulkMeter } from "../components/BulkMeter";
 import { ErrorNote } from "../components/ErrorNote";
 import { RefSelect } from "../components/RefSelect";
+import { SpoolForm } from "../components/SpoolForm";
 import { todayLocal } from "../components/RollForm";
 
-type Mode = "bought" | "bulk" | "given";
+type Mode = "bought" | "spool" | "bulk" | "given";
 
 const MODES: { mode: Mode; label: string }[] = [
   { mode: "bought", label: "Bought" },
+  { mode: "spool", label: "Bulk spool" },
   { mode: "bulk", label: "Loaded from bulk" },
   { mode: "given", label: "Given away" },
 ];
@@ -135,6 +137,20 @@ function BoughtForm({ film, format }: { film: string; format: string }) {
       </button>
       <Result s={s} />
     </form>
+  );
+}
+
+function SpoolPurchase() {
+  const [added, setAdded] = useState(0);
+  return (
+    <>
+      <SpoolForm key={added} simple onSaved={() => setAdded((n) => n + 1)} />
+      {added > 0 && (
+        <p role="status">
+          Spool recorded. Load cassettes from it under “Loaded from bulk”.
+        </p>
+      )}
+    </>
   );
 }
 
@@ -454,6 +470,7 @@ export function Purchases() {
         ))}
       </div>
       {mode === "bought" && <BoughtForm film={film} format={format} />}
+      {mode === "spool" && <SpoolPurchase />}
       {mode === "bulk" && <BulkForm />}
       {mode === "given" && <GivenForm film={film} format={format} />}
       <RecentMovements />
