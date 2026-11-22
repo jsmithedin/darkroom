@@ -31,6 +31,10 @@ PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 
 For scripts and MCP clients. Create one while signed in (Settings screen in the app, or `POST /api/tokens` with `name`, `scopes` of `films:read` and/or `films:write`, optional `expires_at`). The token (`drk_...`) is shown once; only a hash is stored. Use it as `Authorization: Bearer drk_...` on `/api` (and `/mcp` from Phase 6). `films:write` implies `films:read`. Revoke with `DELETE /api/tokens/{id}`; the list shows `last_used_at`. Tokens cannot create or revoke tokens; that needs a browser session.
 
+## API documentation
+
+Interactive docs are at `/api/docs` (and `/api/redoc`), and the OpenAPI schema at `/api/openapi.json`. They need sign-in: open them in the browser while signed in, or fetch the schema with `Authorization: Bearer drk_...` (a read token is enough).
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck, tests and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).

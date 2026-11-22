@@ -10,6 +10,7 @@ from starlette.routing import Mount
 
 from app.api import auth as auth_api
 from app.api import bulk as bulk_api
+from app.api import docs as docs_api
 from app.api import reference as reference_api
 from app.api import rolls as rolls_api
 from app.api import settings as settings_api
@@ -38,7 +39,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finally:
                 await app.state.engine.dispose()
 
-    app = FastAPI(title="Darkroom", lifespan=lifespan)
+    # The built-in docs are public; they are re-served behind sign-in by `api/docs.py`.
+    app = FastAPI(
+        title="Darkroom", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
+    )
 
     @app.exception_handler(InsufficientStockError)
     async def insufficient_stock(_: Request, exc: InsufficientStockError) -> JSONResponse:
@@ -69,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(settings_api.router)
     app.include_router(stock_api.router)
     app.include_router(bulk_api.router)
+    app.include_router(docs_api.router)
     app.state.engine = make_engine(settings.database_url)
 
     @app.get("/api/health")
