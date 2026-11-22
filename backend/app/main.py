@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -10,6 +11,7 @@ from starlette.routing import Mount
 from app.config import Settings
 from app.db import make_engine
 from app.mcp.server import build_mcp, transport_security
+from app.spa import RootApp
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -41,7 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"status": "error", "db": False}, status_code=503)
         return JSONResponse({"status": "ok", "db": True})
 
-    # Last, so the app's own routes win; the MCP app serves /mcp and its well-known routes.
-    app.router.routes.append(Mount("/", app=mcp_app))
+    # Last, so the app's own routes win. RootApp hands /mcp and /.well-known to the MCP app
+    # and serves the built frontend (with SPA fallback) for everything else.
+    app.router.routes.append(Mount("/", app=RootApp(mcp_app, Path(settings.frontend_dist))))
 
     return app
