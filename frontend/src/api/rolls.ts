@@ -109,7 +109,11 @@ export async function fetchLastRoll(cameraId: string): Promise<Roll | null> {
 
 function useInvalidateRolls() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: ["rolls"] });
+  // logging, editing or deleting a counted roll changes the stock figures too
+  return () =>
+    Promise.all(
+      ["rolls", "stock"].map((key) => qc.invalidateQueries({ queryKey: [key] })),
+    );
 }
 
 export function useCreateRoll() {

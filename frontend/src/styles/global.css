@@ -65,3 +65,13 @@ input[type="checkbox"] { min-height: 0; }
 
 textarea { font: inherit; font-size: 16px; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); color: var(--fg); resize: vertical; }
 .stops { margin: 0; padding: 0.5rem 0.75rem; border-left: 4px solid var(--accent); background: var(--card); }
+
+.topbar nav { overflow-x: auto; }
+.topbar nav a { flex: none; }
+.tab { flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.9rem; border: 1px solid var(--border); border-radius: 2rem; color: var(--fg); background: var(--card); font: inherit; cursor: pointer; }
+.tab.active, .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.panel { padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); }
+.count { font-size: 1.5rem; font-weight: 700; }
+.meter { height: 0.75rem; border-radius: 0.4rem; background: var(--border); overflow: hidden; }
+.meter-fill { height: 100%; background: var(--accent); }
+.bulk-meter { display: grid; gap: 0.25rem; }

@@ -2,6 +2,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** The parsed JSON error body, when there was one (for example the 409 stock details). */
+    public body: unknown = null,
   ) {
     super(message);
   }
@@ -23,14 +25,21 @@ export function setCsrfToken(token: string | null): void {
 
 const SAFE = new Set(["GET", "HEAD", "OPTIONS"]);
 
-async function detail(res: Response): Promise<string> {
+async function readError(res: Response): Promise<{ message: string; body: unknown }> {
+  let body: unknown = null;
   try {
-    const body = await res.json();
-    if (typeof body?.detail === "string") return body.detail;
+    body = await res.json();
   } catch {
     // not JSON
   }
-  return res.statusText || `HTTP ${res.status}`;
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  let message = res.statusText || `HTTP ${res.status}`;
+  if (typeof detail === "string") message = detail;
+  else if (Array.isArray(detail)) {
+    // FastAPI validation errors: [{loc, msg}, ...]
+    message = detail.map((d) => (typeof d?.msg === "string" ? d.msg : "invalid value")).join("; ");
+  }
+  return { message, body };
 }
 
 /**
@@ -54,7 +63,10 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     onUnauthorized();
     throw new ApiError(401, "Not signed in");
   }
-  if (!res.ok) throw new ApiError(res.status, await detail(res));
+  if (!res.ok) {
+    const { message, body } = await readError(res);
+    throw new ApiError(res.status, message, body);
+  }
   if (res.status === 204) return undefined as T;
   const data = await res.json();
   if (path === "/api/me" && typeof data?.csrf_token === "string") csrfToken = data.csrf_token;

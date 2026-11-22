@@ -1,8 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { type MockApi, installMockApi } from "../test/mockApi";
+import { renderApp } from "../test/render";
 import { RecentRolls } from "./RecentRolls";
 
 const roll = {
@@ -30,13 +29,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderRecent() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={client}>
-      <RecentRolls />
-    </QueryClientProvider>,
-  );
-  return userEvent.setup();
+  return renderApp(<RecentRolls />).user;
 }
 
 it("lists recent rolls with their derived stops", async () => {
