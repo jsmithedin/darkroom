@@ -46,7 +46,8 @@ async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         maker = async_sessionmaker(bind=conn, expire_on_commit=False)
         async with maker() as session:
             yield session
-        await trans.rollback()
+        if trans.is_active:
+            await trans.rollback()
 
 
 @pytest.fixture
