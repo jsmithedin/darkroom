@@ -2,7 +2,7 @@
 
 Self-hosted film photography tracker: REST API, mobile-first React PWA and an authenticated MCP server, replacing the "Film Photography Tracker v2" Google Sheet. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plan.
 
-Status: Phase 0 (skeleton). Health endpoint, Alembic, MCP mount and a placeholder frontend work; there is no login or data yet.
+Status: Phase 1 in progress. Google sign-in, sessions and CSRF work; tokens and data screens are still to come.
 
 ## Local development
 
@@ -25,6 +25,15 @@ export DATABASE_URL=postgresql+asyncpg://darkroom:darkroom@localhost:5432/darkro
 uv run alembic -c backend/alembic.ini upgrade head
 PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 ```
+
+## Google sign-in setup
+
+In Google Cloud Console create an OAuth client (type: Web application) and add these redirect URIs:
+
+- `https://film.jamielab.uk/api/auth/callback`
+- `http://localhost:8000/api/auth/callback` for local development (with `PUBLIC_BASE_URL=http://localhost:8000`)
+
+Put the client id and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and list the emails that may sign in in `ALLOWED_EMAILS` (JSON list). Anyone else sees a "not authorised" page and gets no session. Session cookies are `Secure`, so browsers only keep them over HTTPS (localhost is exempt in Chrome and Firefox).
 
 ## Deploy (Docker Compose)
 

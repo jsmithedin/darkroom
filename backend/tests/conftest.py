@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,8 +11,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from testcontainers.community.postgres import PostgresContainer
 
+from alembic import command
 from app.config import Settings
 from app.main import create_app
+from tests.helpers import alembic_config
 
 
 @pytest.fixture(scope="session")
@@ -29,6 +32,13 @@ def test_settings(postgres_url: str) -> Settings:
         allowed_emails=["me@example.com"],
         session_secret="test-secret",
     )
+
+
+@pytest.fixture(scope="session")
+def migrated_db(postgres_url: str) -> str:
+    """Schema at head, once per session. Tests that downgrade must upgrade again."""
+    command.upgrade(alembic_config(postgres_url), "head")
+    return postgres_url
 
 
 @pytest.fixture
@@ -51,7 +61,11 @@ async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def client(test_settings: Settings, engine: AsyncEngine) -> AsyncIterator[AsyncClient]:
+async def client(
+    test_settings: Settings, engine: AsyncEngine, migrated_db: str
+) -> AsyncIterator[AsyncClient]:
+    async with engine.begin() as conn:
+        await conn.execute(text("TRUNCATE users CASCADE"))
     app = create_app(test_settings)
     app.state.engine = engine
     async with AsyncClient(

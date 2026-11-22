@@ -8,6 +8,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.routing import Mount
 
+from app.api import auth as auth_api
+from app.auth.google import GoogleOIDC
 from app.config import Settings
 from app.db import make_engine
 from app.mcp.server import build_mcp, transport_security
@@ -31,6 +33,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Darkroom", lifespan=lifespan)
     app.state.settings = settings
+    app.state.oidc = GoogleOIDC(
+        settings.google_client_id,
+        settings.google_client_secret,
+        f"{settings.public_base_url.rstrip('/')}/api/auth/callback",
+    )
+    app.include_router(auth_api.router)
     app.state.engine = make_engine(settings.database_url)
 
     @app.get("/api/health")
