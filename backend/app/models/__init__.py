@@ -13,11 +13,13 @@ from app.models.reference import (
     RefKind,
 )
 from app.models.rolls import Roll
+from app.models.stock import BulkRoll, StockMovement
 
 __all__ = [
     "AppSettings",
     "AuditMixin",
     "Base",
+    "BulkRoll",
     "Camera",
     "Developer",
     "Film",
@@ -27,6 +29,7 @@ __all__ = [
     "PersonalAccessToken",
     "RefKind",
     "Roll",
+    "StockMovement",
     "User",
     "UserSession",
 ]
