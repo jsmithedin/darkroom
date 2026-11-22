@@ -13,7 +13,8 @@ uv sync
 uv run pytest
 uv run ruff check . && uv run mypy backend/app
 
-cd frontend && npm install && npm run dev   # also: npm test, npm run typecheck     # Vite on :5173, proxies /api and /mcp to :8000
+cd frontend && npm install && npm run dev     # Vite on :5173, proxies /api and /mcp to :8000
+npm test && npm run typecheck             # frontend tests and types (run in frontend/)
 ```
 
 Run the backend against a local Postgres:
