@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -18,6 +18,7 @@ from app.auth.google import GoogleOIDC
 from app.config import Settings
 from app.db import make_engine
 from app.mcp.server import build_mcp, transport_security
+from app.services.stock import InsufficientStockError
 from app.spa import RootApp
 
 
@@ -37,6 +38,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await app.state.engine.dispose()
 
     app = FastAPI(title="Darkroom", lifespan=lifespan)
+
+    @app.exception_handler(InsufficientStockError)
+    async def insufficient_stock(_: Request, exc: InsufficientStockError) -> JSONResponse:
+        """409 with enough detail for the UI to offer a recount of that film and format."""
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "code": "insufficient_stock",
+                "film_id": str(exc.film_id),
+                "format_id": str(exc.format_id),
+                "film": exc.film_name,
+                "format": exc.format_name,
+                "available": exc.available,
+            },
+        )
+
     app.state.settings = settings
     app.state.oidc = GoogleOIDC(
         settings.google_client_id,

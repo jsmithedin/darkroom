@@ -1,8 +1,9 @@
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +29,33 @@ class NotFoundError(Exception):
 
 class InvalidMovementError(Exception):
     """The movement is not acceptable as submitted."""
+
+
+class InsufficientStockError(Exception):
+    """The write would leave fewer than zero rolls of a film in a format."""
+
+    def __init__(
+        self,
+        film_id: uuid.UUID,
+        format_id: uuid.UUID,
+        film_name: str,
+        format_name: str,
+        available: int,
+    ) -> None:
+        self.film_id = film_id
+        self.format_id = format_id
+        self.film_name = film_name
+        self.format_name = format_name
+        self.available = available
+        label = f"{film_name} {format_name}"
+        if available > 0:
+            message = f"Only {available} {label} in stock, not enough for this."
+        else:
+            message = f"No {label} in stock."
+        super().__init__(f"{message} Record a purchase or a recount first.")
+
+
+Pair = tuple[uuid.UUID, uuid.UUID]  # (film_id, format_id)
 
 
 @dataclass(frozen=True)
@@ -75,6 +103,39 @@ async def current_stock(db: AsyncSession, film_id: uuid.UUID, format_id: uuid.UU
     return int(level or 0)
 
 
+async def lock_pairs(db: AsyncSession, pairs: Iterable[Pair]) -> dict[Pair, int]:
+    """Serialise writers on each (film, format) until this transaction ends.
+
+    Locks are taken in sorted order so two writers touching the same pairs cannot deadlock.
+    Returns the stock of each pair as it is under the lock, before this write changes anything.
+    """
+    ordered = sorted(set(pairs), key=lambda p: (str(p[0]), str(p[1])))
+    before: dict[Pair, int] = {}
+    for film_id, format_id in ordered:
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"stock:{film_id}:{format_id}"},
+        )
+        before[(film_id, format_id)] = await current_stock(db, film_id, format_id)
+    return before
+
+
+async def assert_non_negative(
+    db: AsyncSession, pairs: Iterable[Pair], before: dict[Pair, int] | None = None
+) -> None:
+    """Raise (after rolling back) if any pair is now below zero. Call after flushing the write,
+    while holding the locks from `lock_pairs`."""
+    for film_id, format_id in sorted(set(pairs), key=lambda p: (str(p[0]), str(p[1]))):
+        if await current_stock(db, film_id, format_id) >= 0:
+            continue
+        film = await db.get(Film, film_id)
+        fmt = await db.get(Format, format_id)
+        names = (film.name if film else "film", fmt.name if fmt else "format")
+        available = max(0, (before or {}).get((film_id, format_id), 0))
+        await db.rollback()  # also releases the locks
+        raise InsufficientStockError(film_id, format_id, names[0], names[1], available)
+
+
 async def get_stock(db: AsyncSession, include_zero: bool = False) -> list[StockRow]:
     """Stock per film and format, grouped by film type then name."""
     stmt = (
@@ -106,8 +167,16 @@ async def get_movement(db: AsyncSession, movement_id: uuid.UUID) -> StockMovemen
     return movement
 
 
-async def _save(db: AsyncSession, movement: StockMovement) -> StockMovement:
+async def _save(
+    db: AsyncSession,
+    movement: StockMovement,
+    guard: dict[Pair, int] | None = None,
+    check: Iterable[Pair] = (),
+) -> StockMovement:
+    """Add and commit a movement; `check` pairs are verified non-negative before committing."""
     db.add(movement)
+    await db.flush()
+    await assert_non_negative(db, check, guard)
     await db.commit()
     await db.refresh(movement)
     return movement
@@ -160,9 +229,13 @@ async def record_bulk_load(db: AsyncSession, actor: Principal, data: BulkLoadIn)
 async def record_given_away(db: AsyncSession, actor: Principal, data: GivenAwayIn) -> StockMovement:
     await _require(db, Film, data.film_id, "film")
     await _require(db, Format, data.format_id, "format")
+    pair = (data.film_id, data.format_id)
+    before = await lock_pairs(db, [pair])
     return await _save(
         db,
         StockMovement(**data.model_dump(), created_by=actor.user_id, updated_by=actor.user_id),
+        before,
+        [pair],
     )
 
 
@@ -181,8 +254,12 @@ async def record_adjustment(
     """Set stock to the counted figure: stores the delta now, and the figure for audit."""
     await _require(db, Film, data.film_id, "film")
     await _require(db, Format, data.format_id, "format")
-    delta = data.counted - await current_stock(db, data.film_id, data.format_id)
+    pair = (data.film_id, data.format_id)
+    # Lock first so the delta is worked out against stock no one else is changing.
+    before = await lock_pairs(db, [pair])
+    delta = data.counted - before[pair]
     if delta == 0:
+        await db.rollback()
         raise InvalidMovementError(f"Stock already shows {data.counted}; nothing to adjust.")
     return await _save(
         db,
@@ -236,31 +313,59 @@ async def update_movement(
         await _require(db, Film, values["film_id"], "film")
     if "format_id" in values:
         await _require(db, Format, values["format_id"], "format")
+
+    old_pair: Pair = (movement.film_id, movement.format_id)
+    old_rolls = movement.rolls
+    new_pair: Pair = (
+        values.get("film_id", movement.film_id),
+        values.get("format_id", movement.format_id),
+    )
+    before = await lock_pairs(db, [old_pair, new_pair])
+
     for key, value in values.items():
         setattr(movement, key, value)
     if movement.kind == "bulk_load" and ({"rolls", "exposures_per_cassette"} & set(values)):
         assert movement.exposures_per_cassette is not None
         movement.metres_mm = await _bulk_metres(db, movement.rolls, movement.exposures_per_cassette)
     movement.updated_by = actor.user_id
-    return await _commit_checked(db, movement)
 
-
-async def _commit_checked(db: AsyncSession, movement: StockMovement) -> StockMovement:
     try:
-        await db.commit()
+        await db.flush()
     except IntegrityError as exc:
         await db.rollback()
         raise InvalidMovementError(
             "That change does not fit this kind of movement "
             "(for example, a purchase needs a positive number of rolls)."
         ) from exc
+    await assert_non_negative(
+        db, _reduced_pairs(old_pair, old_rolls, new_pair, movement.rolls), before
+    )
+    await db.commit()
     await db.refresh(movement)
     return movement
 
 
+def _reduced_pairs(old_pair: Pair, old_rolls: int, new_pair: Pair, new_rolls: int) -> list[Pair]:
+    """Pairs whose stock this edit can lower, so only those are checked."""
+    if old_pair == new_pair:
+        return [new_pair] if new_rolls < old_rolls else []
+    pairs = []
+    if old_rolls > 0:  # the old pair loses the rolls this movement used to add
+        pairs.append(old_pair)
+    if new_rolls < 0:  # the new pair now takes rolls out
+        pairs.append(new_pair)
+    return pairs
+
+
 async def delete_movement(db: AsyncSession, actor: Principal, movement_id: uuid.UUID) -> None:
     movement = await get_movement(db, movement_id)
+    pair: Pair = (movement.film_id, movement.format_id)
+    before = await lock_pairs(db, [pair])
+    removed = movement.rolls
     await db.delete(movement)
+    await db.flush()
+    if removed > 0:  # removing stock that was added (a purchase, a positive adjustment...)
+        await assert_non_negative(db, [pair], before)
     await db.commit()
 
 

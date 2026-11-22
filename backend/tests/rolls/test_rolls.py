@@ -271,6 +271,7 @@ async def test_scopes(
 
 
 async def test_unauthenticated_401(client: AsyncClient) -> None:
+    client.cookies.clear()  # the autouse stock fixture signs the shared client in
     assert (await client.get("/api/rolls")).status_code == 401
     assert (await client.get(f"/api/cameras/{uuid.uuid4()}/last-roll")).status_code == 401
 
