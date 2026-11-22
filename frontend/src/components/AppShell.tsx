@@ -14,6 +14,7 @@ export function AppShell() {
         <strong className="brand">Darkroom</strong>
         <nav aria-label="Main">
           <NavLink to="/" end>Home</NavLink>
+          <NavLink to="/reference">Reference</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
         <button type="button" className="link" onClick={() => logout.mutate()}>
