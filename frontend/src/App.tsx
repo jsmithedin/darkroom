@@ -1,13 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
-import { fetchHealth } from "./api/health";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { AppShell } from "./components/AppShell";
+import { Home } from "./pages/Home";
+import { Login } from "./pages/Login";
+import { Settings } from "./pages/Settings";
 
 export function App() {
-  const { data, isError } = useQuery({ queryKey: ["health"], queryFn: fetchHealth });
-  const state = isError ? "unreachable" : data ? (data.db ? "ok" : "database down") : "checking";
   return (
-    <main>
-      <h1>Darkroom</h1>
-      <p>Backend: {state}</p>
-    </main>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<AppShell />}>
+          <Route index element={<Home />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<p>Not found.</p>} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }

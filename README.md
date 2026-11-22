@@ -2,7 +2,7 @@
 
 Self-hosted film photography tracker: REST API, mobile-first React PWA and an authenticated MCP server, replacing the "Film Photography Tracker v2" Google Sheet. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plan.
 
-Status: Phase 1 in progress. Google sign-in, sessions, CSRF and personal access tokens (API) work; the token screen and data screens are still to come.
+Status: Phase 1 in progress. Google sign-in, sessions, CSRF and personal access tokens and the sign-in and token screens work; data screens are still to come.
 
 ## Local development
 
@@ -13,7 +13,7 @@ uv sync
 uv run pytest
 uv run ruff check . && uv run mypy backend/app
 
-cd frontend && npm install && npm run dev     # Vite on :5173, proxies /api and /mcp to :8000
+cd frontend && npm install && npm run dev   # also: npm test, npm run typecheck     # Vite on :5173, proxies /api and /mcp to :8000
 ```
 
 Run the backend against a local Postgres:
@@ -28,11 +28,11 @@ PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 
 ## Personal access tokens
 
-For scripts and MCP clients. Create one while signed in (`POST /api/tokens` with `name`, `scopes` of `films:read` and/or `films:write`, optional `expires_at`; the UI arrives in Task 1.3). The token (`drk_...`) is shown once; only a hash is stored. Use it as `Authorization: Bearer drk_...` on `/api` (and `/mcp` from Phase 6). `films:write` implies `films:read`. Revoke with `DELETE /api/tokens/{id}`; the list shows `last_used_at`. Tokens cannot create or revoke tokens; that needs a browser session.
+For scripts and MCP clients. Create one while signed in (Settings screen in the app, or `POST /api/tokens` with `name`, `scopes` of `films:read` and/or `films:write`, optional `expires_at`). The token (`drk_...`) is shown once; only a hash is stored. Use it as `Authorization: Bearer drk_...` on `/api` (and `/mcp` from Phase 6). `films:write` implies `films:read`. Revoke with `DELETE /api/tokens/{id}`; the list shows `last_used_at`. Tokens cannot create or revoke tokens; that needs a browser session.
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).
+GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck, tests and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).
 
 ## Google sign-in setup
 
