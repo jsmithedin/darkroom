@@ -17,6 +17,10 @@ uv run alembic -c backend/alembic.ini upgrade head   # needs DATABASE_URL
 uv run alembic -c backend/alembic.ini revision --autogenerate -m "msg"
 ```
 
+## Dependencies
+
+Anything imported by `backend/app` belongs in `dependencies`, not the `dev` group: tests install dev deps and will not catch a miss, but the Docker image (`uv sync --no-dev`) will crash on start. After adding imports, check with `docker build -t darkroom-check . && docker run --rm -e PYTHONPATH=/srv/backend darkroom-check python -c "import app.main"`.
+
 ## Layout
 
 - `backend/app/` FastAPI app (`main.py` has `create_app(settings)`), `config.py` Settings, `db.py` engine and `get_session`
