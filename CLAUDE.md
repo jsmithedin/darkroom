@@ -23,6 +23,8 @@ uv run alembic -c backend/alembic.ini revision --autogenerate -m "msg"
 - `backend/tests/` pytest; `conftest.py` provides `db_session` (rolled back per test) and `client` fixtures
 - `backend/alembic/` async migrations; `env.py` reads `Settings().database_url` unless the ini sets `sqlalchemy.url` (tests do). `models/__init__.py` must import every model so autogenerate sees it. `test_models_match_migrations` fails if models and migrations drift.
 - `models/base.py`: `Base` (naming convention) and `AuditMixin` (id, timestamps, created_by/updated_by). Every table uses the mixin unless the spec says otherwise.
+- `backend/app/mcp/server.py`: `build_mcp()` and Host/Origin settings derived from `PUBLIC_BASE_URL`. `create_app` mounts the MCP app at `/` **last** and enters `mcp.session_manager.run()` in its lifespan (FastAPI won't run the mount's lifespan). See `docs/notes/mcp-mount-spike.md` before touching this.
+- Tests that hit `/mcp` need `LifespanManager` (see `test_mcp_mount.py`).
 - Tests run on one session-scoped event loop (see `pyproject.toml`)
 
 ## Conventions
