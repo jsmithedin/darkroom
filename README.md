@@ -2,7 +2,7 @@
 
 Self-hosted film photography tracker: REST API, mobile-first React PWA and an authenticated MCP server, replacing the "Film Photography Tracker v2" Google Sheet. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plan.
 
-Status: Phase 1 in progress. Google sign-in, sessions and CSRF work; tokens and data screens are still to come.
+Status: Phase 1 in progress. Google sign-in, sessions, CSRF and personal access tokens (API) work; the token screen and data screens are still to come.
 
 ## Local development
 
@@ -25,6 +25,10 @@ export DATABASE_URL=postgresql+asyncpg://darkroom:darkroom@localhost:5432/darkro
 uv run alembic -c backend/alembic.ini upgrade head
 PYTHONPATH=backend uv run uvicorn app.main:create_app --factory --reload
 ```
+
+## Personal access tokens
+
+For scripts and MCP clients. Create one while signed in (`POST /api/tokens` with `name`, `scopes` of `films:read` and/or `films:write`, optional `expires_at`; the UI arrives in Task 1.3). The token (`drk_...`) is shown once; only a hash is stored. Use it as `Authorization: Bearer drk_...` on `/api` (and `/mcp` from Phase 6). `films:write` implies `films:read`. Revoke with `DELETE /api/tokens/{id}`; the list shows `last_used_at`. Tokens cannot create or revoke tokens; that needs a browser session.
 
 ## CI
 
