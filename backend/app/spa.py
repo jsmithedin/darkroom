@@ -1,0 +1,44 @@
+from pathlib import Path
+
+from starlette.responses import FileResponse, JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+# Paths owned by the MCP app rather than the frontend.
+MCP_PREFIXES = ("/mcp", "/.well-known")
+
+
+def _owned_by(path: str, prefixes: tuple[str, ...]) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in prefixes)
+
+
+class RootApp:
+    """Catch-all mounted last: sends MCP paths to the MCP app, everything else to the SPA.
+
+    Unknown `/api` paths get a JSON 404 so API clients never receive index.html.
+    """
+
+    def __init__(self, mcp_app: ASGIApp, dist: Path) -> None:
+        self.mcp_app = mcp_app
+        self.dist = dist.resolve()
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.mcp_app(scope, receive, send)
+            return
+        path: str = scope["path"]
+        if _owned_by(path, MCP_PREFIXES):
+            await self.mcp_app(scope, receive, send)
+            return
+        await self._spa(path, scope["method"])(scope, receive, send)
+
+    def _spa(self, path: str, method: str) -> Response:
+        not_found = JSONResponse({"detail": "Not Found"}, status_code=404)
+        if _owned_by(path, ("/api",)) or method not in ("GET", "HEAD"):
+            return not_found
+        candidate = (self.dist / path.lstrip("/")).resolve()
+        if candidate.is_file() and candidate.is_relative_to(self.dist):
+            return FileResponse(candidate)
+        index = self.dist / "index.html"
+        if index.is_file():
+            return FileResponse(index)
+        return not_found
