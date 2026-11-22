@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.routing import Mount
 
 from app.api import auth as auth_api
+from app.api import reference as reference_api
 from app.api import tokens as tokens_api
 from app.auth.google import GoogleOIDC
 from app.config import Settings
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(auth_api.router)
     app.include_router(tokens_api.router)
+    app.include_router(reference_api.router)
     app.state.engine = make_engine(settings.database_url)
 
     @app.get("/api/health")

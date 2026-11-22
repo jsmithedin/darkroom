@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -88,3 +89,28 @@ async def make_token(client: AsyncClient, scopes: list[str], **extra: object) ->
     )
     assert resp.status_code == 201, resp.text
     return resp.json()  # type: ignore[no-any-return]
+
+
+@pytest.fixture
+async def authed(client: AsyncClient, oidc: FakeOIDC) -> AsyncClient:
+    """The test client signed in with a browser session; unsafe requests are CSRF-ready."""
+    await sign_in(client)
+    csrf = (await client.get("/api/me")).json()["csrf_token"]
+    client.headers.update({"X-CSRF-Token": csrf, **ORIGIN})
+    return client
+
+
+@pytest.fixture
+def bearer_client(authed: AsyncClient) -> Callable[..., Awaitable[AsyncClient]]:
+    """Factory: a cookie-less client authenticating with a fresh PAT of the given scopes."""
+
+    async def make(*scopes: str) -> AsyncClient:
+        resp = await authed.post("/api/tokens", json={"name": "t", "scopes": list(scopes)})
+        assert resp.status_code == 201, resp.text
+        return AsyncClient(
+            transport=authed._transport,  # type: ignore[attr-defined]
+            base_url=str(authed.base_url),
+            headers={"Authorization": f"Bearer {resp.json()['token']}"},
+        )
+
+    return make
