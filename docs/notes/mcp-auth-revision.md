@@ -40,7 +40,7 @@ Darkroom design was written on 2026-11-22.
 
 Discovery advertises the public-client authorization code and refresh token
 grants. The SDK serves protected-resource metadata with the same issuer as
-the authorization server document. Migration 0009 adds OAuth clients,
+the authorization server document. Migration 0010 adds OAuth clients,
 hashed authorization codes, and hashed access and refresh tokens with a rotation
 family ID. Registration, code exchange and bearer enforcement follow in tasks
 6.2 through 6.4.

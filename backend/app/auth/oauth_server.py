@@ -1,5 +1,9 @@
 from mcp.server.auth.handlers.metadata import MetadataHandler
-from mcp.server.auth.routes import create_protected_resource_routes
+from mcp.server.auth.routes import (
+    cors_middleware,
+    create_protected_resource_routes,
+    validate_issuer_url,
+)
 from mcp.shared.auth import OAuthMetadata
 from pydantic import AnyHttpUrl
 from starlette.routing import Route
@@ -9,6 +13,11 @@ from app.auth.identity import ALL_SCOPES
 
 def authorization_server_metadata(public_base_url: str) -> OAuthMetadata:
     issuer = public_base_url.rstrip("/")
+    issuer_url = AnyHttpUrl(issuer)
+    validate_issuer_url(issuer_url)
+    # The SDK checks non-empty values. Bare "?" and "#" are invalid here too.
+    if issuer_url.query == "" or issuer_url.fragment == "":
+        raise ValueError("Issuer URL must not have an empty query string or fragment")
     return OAuthMetadata.model_validate(
         {
             "issuer": issuer,
@@ -29,11 +38,12 @@ def authorization_server_metadata(public_base_url: str) -> OAuthMetadata:
 
 def oauth_metadata_routes(public_base_url: str) -> list[Route]:
     metadata = authorization_server_metadata(public_base_url)
+    discovery_methods = ["GET", "OPTIONS"]
     return [
         Route(
             "/.well-known/oauth-authorization-server",
-            MetadataHandler(metadata).handle,
-            methods=["GET"],
+            cors_middleware(MetadataHandler(metadata).handle, discovery_methods),
+            methods=discovery_methods,
         ),
         *create_protected_resource_routes(
             resource_url=AnyHttpUrl(f"{metadata.issuer}/mcp"),
