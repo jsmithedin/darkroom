@@ -33,6 +33,7 @@ services:
   # Nightly pg_dump to ./backups (14 days kept). Restore: see README "Backups and restore".
   backup:
     build: ops/backup
+    init: true
     restart: unless-stopped
     depends_on:
       db:

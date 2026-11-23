@@ -81,7 +81,7 @@ Tunnel: in the cloudflared config add an ingress rule `film.jamielab.uk` -> `htt
 
 ## Backups and restore
 
-The `backup` service runs `pg_dump -Fc` once at start-up and then every night at `BACKUP_HOUR` (UTC, default 02:00). Dumps are written to `./backups/darkroom-YYYYMMDD.dump` (gitignored; running twice on one day replaces that day's file) and dumps older than `BACKUP_RETENTION_DAYS` (default 14) are deleted. A dump is checked with `pg_restore --list` before it is moved into place. Check the last one with `ls -l backups/` or `docker compose logs backup`.
+The `backup` service runs `pg_dump -Fc` once at start-up and then every night at `BACKUP_HOUR` (UTC, default 02:00). Dumps are written to `./backups/darkroom-YYYYMMDD.dump` (gitignored, owned by root, readable by everyone on the host; a second dump on the same day gets a time in its name and nothing is overwritten). Dumps older than `BACKUP_RETENTION_DAYS` (default 14) are deleted, but the newest three are always kept, so a run of bad dumps cannot push out the last good ones. A dump is written to a temporary file and only moved into place after `pg_dump` succeeds and `pg_restore --list` can read it. Restarting the service does not take another dump if one from the last 12 hours exists. Check the last one with `ls -l backups/` or `docker compose logs backup`.
 
 **Take a backup now:** `docker compose run --rm backup once`
 
@@ -91,14 +91,16 @@ The `backup` service runs `pg_dump -Fc` once at start-up and then every night at
 docker compose run --rm backup /ops/restore.sh /backups/darkroom-20261123.dump scratch
 ```
 
-It creates the database `scratch`, restores into it and prints the row counts of `rolls` and `stock_movements`; compare them with the live ones (`docker compose exec db psql -U darkroom -Atc "select count(*) from rolls"`). It refuses to touch a database that already exists unless you add `--replace`. Drop the scratch copy afterwards with `docker compose exec db psql -U darkroom -d postgres -c "DROP DATABASE scratch"`.
+It restores into a temporary database, then renames it to `scratch`, and prints the row counts of `rolls` and `stock_movements`; compare them with the live ones (`docker compose exec db psql -U darkroom -Atc "select count(*) from rolls"`). A failed restore changes nothing. It refuses a database that already exists unless you add `--replace`, which keeps the old one renamed `<name>_old_<time>`. Drop the scratch copy afterwards with `docker compose exec db psql -U darkroom -d postgres -c "DROP DATABASE scratch"`.
 
 **Disaster recovery** (replace the live database from a dump):
 
 ```
-docker compose stop app
+docker compose stop app backup
 docker compose run --rm backup /ops/restore.sh /backups/darkroom-20261123.dump darkroom --replace
-docker compose start app
+docker compose start app backup
 ```
+
+The previous database is kept as `darkroom_old_<time>`. Once the app looks right, drop it: `docker compose exec db psql -U darkroom -d postgres -c "DROP DATABASE darkroom_old_<time>"`. An empty database also produces valid nightly dumps, so check the app after any volume or database change.
 
 Copy `./backups` off the NUC now and then (a dump on the same disk does not survive the disk). `ops/backup/selftest.sh` runs the whole backup and restore against a throwaway Postgres and compares counts; CI runs it.
