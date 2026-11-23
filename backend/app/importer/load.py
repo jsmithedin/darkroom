@@ -74,15 +74,21 @@ class LoadReport:
         return sum(self.inserted.values())
 
 
-def fingerprint(tab: str, row: Mapping[str, str]) -> str:
+def fingerprint(tab: str, row: Mapping[str, str | None]) -> str:
     """A stable hash of a row's content (never its line number) within a tab."""
     payload = json.dumps([tab, sorted(row.items())], ensure_ascii=False)
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def _fields(row: object) -> dict[str, str]:
+def _fields(row: object) -> dict[str, str | None]:
+    """A row's content as text; a blank cell stays null so it differs from the text "None"."""
     assert is_dataclass(row)
-    return {f.name: str(getattr(row, f.name)) for f in fields(row) if f.name != "line"}
+    out: dict[str, str | None] = {}
+    for f in fields(row):
+        if f.name != "line":
+            value = getattr(row, f.name)
+            out[f.name] = None if value is None else str(value)
+    return out
 
 
 def _fold(name: str) -> str:
@@ -159,15 +165,20 @@ class _Ledger:
         self.session = session
         self.actor = actor
         self.report = report
-        self.done: set[tuple[str, str, int]] = set()
+        self.done: dict[tuple[str, str, int], uuid.UUID | None] = {}
 
     async def load(self) -> None:
         rows = (
             await self.session.execute(
-                select(ImportLedger.tab, ImportLedger.fingerprint, ImportLedger.occurrence)
+                select(
+                    ImportLedger.tab,
+                    ImportLedger.fingerprint,
+                    ImportLedger.occurrence,
+                    ImportLedger.record_id,
+                )
             )
         ).all()
-        self.done = {(t, f, o) for t, f, o in rows}
+        self.done = {(t, f, o): rid for t, f, o, rid in rows}
 
     def keys(self, tab: str, rows: list[Any]) -> list[tuple[Any, str, int]]:
         """(row, fingerprint, occurrence) for each row, numbering identical rows 1, 2, ..."""
@@ -178,6 +189,10 @@ class _Ledger:
             seen[fp] += 1
             out.append((row, fp, seen[fp]))
         return out
+
+    def target(self, tab: str, fp: str, occurrence: int) -> uuid.UUID | None:
+        """The record a previous run created for this row, if any."""
+        return self.done.get((tab, fp, occurrence))
 
     def is_done(self, tab: str, fp: str, occurrence: int) -> bool:
         if (tab, fp, occurrence) in self.done:
@@ -230,9 +245,13 @@ async def _reference(
         tab = f"lists.{kind}" if kind != "film" else "films"
         rows: list[Any] = sheet.films if kind == "film" else list(names)
         for row, fp, occ in ledger.keys(tab, rows):
-            if ledger.is_done(tab, fp, occ):
-                continue
             name = row.name if kind == "film" else row
+            if ledger.is_done(tab, fp, occ):
+                # Renamed since the import? The recorded id still resolves the sheet's name.
+                recorded = ledger.target(tab, fp, occ)
+                if recorded is not None:
+                    existing[kind].setdefault(_fold(name), recorded)
+                continue
             item_id = existing[kind].get(_fold(name))
             if item_id is None:
                 values: dict[str, Any] = {"name": name, "created_by": actor, "updated_by": actor}
@@ -284,6 +303,16 @@ async def _load(
         await session.flush()
         spools[_fold(row.label)] = spool
         ledger.record("bulk", fp, occ, spool.id)
+
+    # Lock every pair a counted write may lower before writing, so the snapshot is pre-write.
+    candidates: set[Pair] = set()
+    for r in sheet.tracker:
+        if r.dev_date > OPENING_DATE:
+            candidates.add((ref("film", r.film), ref("format", r.format)))
+    for p in sheet.purchases:
+        if p.kind == "given_away" and p.film and p.format:
+            candidates.add((ref("film", p.film), ref("format", p.format)))
+    before = await lock_pairs(session, candidates)
 
     counted: set[Pair] = set()
     for row, fp, occ in ledger.keys("tracker", sheet.tracker):
@@ -370,5 +399,4 @@ async def _load(
 
     # Rolls after the opening date and given-away stock count, so they must not overdraw.
     if counted:
-        before = await lock_pairs(session, counted)
         await assert_non_negative(session, counted, before)

@@ -198,3 +198,31 @@ async def test_purchases_given_away_and_bulk_load(db_session: AsyncSession, acto
         await db_session.execute(select(StockMovement).where(StockMovement.kind == "bulk_load"))
     ).scalar_one()
     assert load.metres_mm == 2 * (250 + 36 * 38)  # leader 250, pitch 38 at import time
+
+
+async def test_blank_and_text_none_have_different_fingerprints() -> None:
+    from app.importer.load import _fields
+
+    assert fingerprint("t", _fields(roll(notes=None))) != fingerprint(
+        "t", _fields(roll(notes="None"))
+    )
+
+
+async def test_renamed_reference_item_still_resolves_on_rerun(
+    db_session: AsyncSession, actor: object
+) -> None:
+    await load_all(db_session, sheet(), actor)  # type: ignore[arg-type]
+    camera = (await db_session.execute(select(Camera))).scalar_one()
+    camera.name = "Nikon FM2 (black)"
+    await db_session.flush()
+    more = sheet(
+        tracker=[
+            roll(),
+            roll(),
+            roll(date(2026, 5, 1), camera="nikon fm2"),
+            roll(day=date(2026, 6, 1)),
+        ]
+    )
+    report = await load_all(db_session, more, actor)  # type: ignore[arg-type]
+    assert report.inserted == {"tracker": 1}
+    assert await count(db_session, Camera) == 1
