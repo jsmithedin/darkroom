@@ -22,6 +22,7 @@ from app.models import (
     BulkRoll,
     Camera,
     Developer,
+    DevTimeRef,
     Film,
     Filter,
     Format,
@@ -200,7 +201,9 @@ class _Ledger:
             return True
         return False
 
-    def record(self, tab: str, fp: str, occurrence: int, record_id: uuid.UUID) -> None:
+    def record(
+        self, tab: str, fp: str, occurrence: int, record_id: uuid.UUID, inserted: bool = True
+    ) -> None:
         self.session.add(
             ImportLedger(
                 tab=tab,
@@ -211,7 +214,7 @@ class _Ledger:
                 updated_by=self.actor,
             )
         )
-        self.report.count(tab, True)
+        self.report.count(tab, inserted)
 
 
 async def load_all(
@@ -405,6 +408,31 @@ async def _load(
         session.add(movement)
         await session.flush()
         ledger.record("purchases", fp, occ, movement.id)
+
+    existing_refs = {
+        (r.film_id, r.ei, r.developer_id): r.id
+        for r in (await session.execute(select(DevTimeRef))).scalars()
+    }
+    for row, fp, occ in ledger.keys("dev_times", sheet.dev_times):
+        if ledger.is_done("dev_times", fp, occ):
+            continue
+        key = (ref("film", row.film), row.ei, ref("developer", row.developer))
+        if key in existing_refs:  # already entered by hand: keep that one
+            ledger.record("dev_times", fp, occ, existing_refs[key], inserted=False)
+            continue
+        dev_ref = DevTimeRef(
+            film_id=key[0],
+            ei=row.ei,
+            developer_id=key[2],
+            minutes=row.minutes,
+            notes=row.notes,
+            created_by=actor,
+            updated_by=actor,
+        )
+        session.add(dev_ref)
+        await session.flush()
+        existing_refs[key] = dev_ref.id
+        ledger.record("dev_times", fp, occ, dev_ref.id)
 
     # Rolls after the opening date and given-away stock count, so they must not overdraw.
     if counted:

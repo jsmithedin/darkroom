@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SettingsLayout } from "./components/SettingsLayout";
+import { DevTimes } from "./pages/DevTimes";
 import { Login } from "./pages/Login";
 import { LogRoll } from "./pages/LogRoll";
 import { Purchases } from "./pages/Purchases";
@@ -20,6 +21,7 @@ export function App() {
           <Route path="/reference/:kind" element={<Reference />} />
           <Route path="/stock" element={<Stock />} />
           <Route path="/purchases" element={<Purchases />} />
+          <Route path="/dev-times" element={<DevTimes />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Settings />} />
             <Route path="bulk" element={<SettingsBulk />} />

@@ -241,3 +241,33 @@ async def test_renamed_bulk_spool_still_resolves_for_a_new_bulk_load(
     report = await load_all(db_session, sheet(purchases=[load]), actor)  # type: ignore[arg-type]
     assert report.inserted == {"purchases": 1}
     assert await count(db_session, BulkRoll) == 1
+
+
+async def test_dev_time_refs_are_loaded_once_and_hand_entered_ones_win(
+    db_session: AsyncSession, actor: object
+) -> None:
+    from app.importer.parse import DevTimeRef as Row
+    from app.models import DevTimeRef
+
+    rows = [
+        Row(2, "Tri-X", Decimal("400"), "HC-110", Decimal("9.5"), "from sheet"),
+        Row(3, "Tri-X", Decimal("800"), "HC-110", Decimal("12"), None),
+    ]
+    first = await load_all(db_session, sheet(dev_times=rows), actor)  # type: ignore[arg-type]
+    assert first.inserted["dev_times"] == 2
+    again = await load_all(db_session, sheet(dev_times=rows), actor)  # type: ignore[arg-type]
+    assert again.total_inserted == 0
+    assert await count(db_session, DevTimeRef) == 2
+
+    # A reference typed in by hand for the same film, EI and developer is kept, not duplicated.
+    mine_id = (
+        await db_session.execute(select(DevTimeRef.id).where(DevTimeRef.ei == 800))
+    ).scalar_one()
+    mine = await db_session.get(DevTimeRef, mine_id)
+    assert mine is not None
+    mine.minutes = Decimal("13")
+    await db_session.flush()
+    later = [Row(9, "Tri-X", Decimal("800"), "HC-110", Decimal("12"), "again")]
+    await load_all(db_session, sheet(dev_times=later), actor)  # type: ignore[arg-type]
+    assert await count(db_session, DevTimeRef) == 2
+    assert mine.minutes == Decimal("13")

@@ -2,6 +2,7 @@
 
 from app.models.auth import PersonalAccessToken, User, UserSession
 from app.models.base import AuditMixin, Base
+from app.models.devtimes import DevTimeRef
 from app.models.imports import ImportLedger
 from app.models.reference import (
     AppSettings,
@@ -22,6 +23,7 @@ __all__ = [
     "Base",
     "BulkRoll",
     "Camera",
+    "DevTimeRef",
     "Developer",
     "Film",
     "Filter",
