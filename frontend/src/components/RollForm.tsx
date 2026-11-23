@@ -127,7 +127,9 @@ export function RollForm({ roll, onDone }: Props) {
 
 
   return (
-    <form onSubmit={submit} className="stack" aria-label={editing ? "Edit roll" : "Log a roll"}>
+    <form onSubmit={submit} className="stack roll-form" aria-label={editing ? "Edit roll" : "Log a roll"}>
+      <fieldset>
+        <legend>Roll details</legend>
       <label>
         Developed on
         <input
@@ -168,6 +170,9 @@ export function RollForm({ roll, onDone }: Props) {
           Stops vs box: <strong>{formatStops(stops)}</strong> <span className="small">(box ISO {boxIso})</span>
         </p>
       )}
+      </fieldset>
+      <fieldset>
+        <legend>Development</legend>
       <RefSelect
         kind="developers"
         label="Developer"
@@ -198,6 +203,9 @@ export function RollForm({ roll, onDone }: Props) {
           <option value="bulk">Loaded from bulk</option>
         </select>
       </label>
+      </fieldset>
+      <fieldset>
+        <legend>Field notes</legend>
       <label>
         Subject
         <input value={draft.subject} onChange={(e) => set("subject", e.target.value)} />
@@ -207,6 +215,7 @@ export function RollForm({ roll, onDone }: Props) {
         <textarea value={draft.notes} onChange={(e) => set("notes", e.target.value)} rows={3} />
       </label>
 
+      </fieldset>
       <label className="check">
         <input
           type="checkbox"
