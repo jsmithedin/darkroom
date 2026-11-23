@@ -213,6 +213,8 @@ export function useStocktake() {
         body: JSON.stringify(body),
       }),
     onSuccess: invalidate,
+    // A refused stocktake usually means stock moved: refetch so the next review starts from it.
+    onError: invalidate,
   });
 }
 

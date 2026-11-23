@@ -97,3 +97,31 @@ async def test_validation(authed: AsyncClient, gear: dict[str, str]) -> None:
     assert (await authed.post("/api/stocktakes", json=empty)).status_code == 422
     unknown = body(gear, [{"counted": 1, "expected": 0, "film_id": str(uuid.uuid4())}])
     assert (await authed.post("/api/stocktakes", json=unknown)).status_code == 422
+
+
+async def test_replay_lists_adjustments_in_the_same_order(
+    authed: AsyncClient, gear: dict[str, str]
+) -> None:
+    await post(authed, purchase(gear, rolls=5))
+    payload = body(gear, [{"counted": 2, "expected": 5}])
+    payload["counts"].append(
+        {"film_id": gear["film"], "format_id": gear["format120"], "counted": 3, "expected": 0}
+    )
+    first = (await authed.post("/api/stocktakes", json=payload)).json()
+    again = (await authed.post("/api/stocktakes", json=payload)).json()
+    assert len(first["adjustments"]) == 2
+    assert [a["id"] for a in again["adjustments"]] == [a["id"] for a in first["adjustments"]]
+
+
+async def test_all_matching_counts_write_nothing(authed: AsyncClient, gear: dict[str, str]) -> None:
+    await post(authed, purchase(gear, rolls=5))
+    resp = await authed.post("/api/stocktakes", json=body(gear, [{"counted": 5, "expected": 5}]))
+    assert resp.status_code == 201
+    assert resp.json()["adjustments"] == []
+    moves = (await authed.get("/api/stock-movements", params={"kind": "adjustment"})).json()
+    assert moves["total"] == 0
+
+
+async def test_count_over_the_limit_is_rejected(authed: AsyncClient, gear: dict[str, str]) -> None:
+    over = body(gear, [{"counted": 100_001, "expected": 0}])
+    assert (await authed.post("/api/stocktakes", json=over)).status_code == 422

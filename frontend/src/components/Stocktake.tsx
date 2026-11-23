@@ -14,6 +14,8 @@ interface Line {
   flagged: ChangedRow | null;
 }
 
+const MAX_COUNT = 100_000;
+const validCount = (v: string) => /^\d+$/.test(v.trim()) && Number(v.trim()) <= MAX_COUNT;
 const key = (film_id: string, format_id: string) => `${film_id}:${format_id}`;
 
 /**
@@ -48,6 +50,13 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
 
   function addRow() {
     if (!pickFilm.id || !pickFormat.id) return;
+    const id = key(pickFilm.id, pickFormat.id);
+    const already = [...known, ...extra].some((r) => key(r.film_id, r.format_id) === id);
+    if (already) {
+      setPickFilm({ id: "", name: "" });
+      setPickFormat({ id: "", name: "" });
+      return;
+    }
     setExtra([
       ...extra,
       { film_id: pickFilm.id, film: pickFilm.name, format_id: pickFormat.id, format: pickFormat.name },
@@ -58,11 +67,14 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
 
   const invalid = rows.some((r) => {
     const v = typed[key(r.film_id, r.format_id)];
-    return v !== undefined && v.trim() !== "" && !/^\d+$/.test(v.trim());
+    return v !== undefined && v.trim() !== "" && !validCount(v);
   });
   const entered = rows.filter((r) => (typed[key(r.film_id, r.format_id)] ?? "").trim() !== "");
 
   function startReview() {
+    // One id per reviewed set: pressing Apply again on the same review is a safe retry, but an
+    // edited set must not be mistaken for an earlier one.
+    setBatchId(crypto.randomUUID());
     setReview(
       entered.map((r) => ({
         ...r,
@@ -100,7 +112,6 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
             }),
           );
           setStale(true);
-          setBatchId(crypto.randomUUID());
         },
       },
     );
@@ -108,7 +119,9 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
 
   if (review) {
     const differences = review.filter((l) => l.counted !== l.recorded);
-    const matching = review.length - differences.length;
+    // A flagged row whose figure now matches the count stays visible so the alert makes sense.
+    const shown = review.filter((l) => l.counted !== l.recorded || l.flagged);
+    const matching = review.length - shown.length;
     return (
       <section className="stack panel" aria-label="Review stocktake">
         <h3>Review differences</h3>
@@ -118,7 +131,7 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
             them and confirm again. Nothing has been saved.
           </p>
         )}
-        {differences.length === 0 ? (
+        {shown.length === 0 ? (
           <p>Every count matches the recorded stock. Nothing to change.</p>
         ) : (
           <table>
@@ -131,7 +144,7 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {differences.map((l) => (
+              {shown.map((l) => (
                 <tr key={key(l.film_id, l.format_id)} className={l.flagged ? "flagged" : ""}>
                   <td>
                     {l.film} ({l.format})
@@ -141,7 +154,11 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
                   </td>
                   <td>{l.recorded}</td>
                   <td>{l.counted}</td>
-                  <td>{l.counted - l.recorded > 0 ? "+" : ""}{l.counted - l.recorded}</td>
+                  <td>
+                    {l.counted === l.recorded
+                      ? "now matches"
+                      : `${l.counted - l.recorded > 0 ? "+" : ""}${l.counted - l.recorded}`}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,6 +213,7 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
               <input
                 id={`count-${id}`}
                 aria-label={`Counted ${r.film} ${r.format}`}
+                aria-invalid={(typed[id] ?? "").trim() !== "" && !validCount(typed[id])}
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={typed[id] ?? ""}
@@ -230,7 +248,7 @@ export function Stocktake({ onDone }: { onDone: () => void }) {
           Cancel
         </button>
       </div>
-      {invalid && <p role="alert" className="error">Counts must be whole numbers, 0 or more.</p>}
+      {invalid && <p role="alert" className="error">Counts must be whole numbers from 0 to 100,000.</p>}
     </form>
   );
 }

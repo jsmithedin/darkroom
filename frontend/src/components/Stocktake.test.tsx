@@ -79,7 +79,7 @@ it("rejects non-numbers and needs at least one count", async () => {
   const review = await screen.findByRole("button", { name: "Review differences" });
   expect(review).toBeDisabled();
   await user.type(await screen.findByLabelText("Counted Tri-X 35mm"), "x");
-  expect(screen.getByText("Counts must be whole numbers, 0 or more.")).toBeInTheDocument();
+  expect(screen.getByText("Counts must be whole numbers from 0 to 100,000.")).toBeInTheDocument();
   expect(review).toBeDisabled();
 });
 
@@ -121,4 +121,97 @@ it("flags a row whose stock changed and applies nothing until confirmed again", 
   await user.click(screen.getByRole("button", { name: "Apply 1 change" }));
   await waitFor(() => expect(posts()).toHaveLength(2));
   expect(sent(1).counts[0].expected).toBe(6);
+});
+
+it("refetches after a stale refusal so Back then Review starts from the new figure", async () => {
+  let current = 5;
+  respond = () =>
+    reply(
+      {
+        detail: "Stock changed",
+        code: "stock_changed",
+        rows: [
+          { film_id: "f1", format_id: "m35", film: "Tri-X", format: "35mm", expected: 5, current: 6 },
+        ],
+      },
+      409,
+    );
+  const base = api.handler;
+  api.handler = (url, method, body) => {
+    if (url.startsWith("/api/stock?") || url === "/api/stock") {
+      return reply(rows.map((r) => (r.film.id === "f1" ? { ...r, rolls: current } : r)));
+    }
+    return base?.(url, method, body);
+  };
+  const { user } = renderApp(<Stocktake onDone={() => {}} />);
+  await user.type(await screen.findByLabelText("Counted Tri-X 35mm"), "4");
+  await user.click(screen.getByRole("button", { name: "Review differences" }));
+  current = 6; // stock moves on the server
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  await screen.findByText(/Stock changed since you counted/);
+
+  respond = () => reply({ replayed: false, adjustments: [] }, 201);
+  await user.click(screen.getByRole("button", { name: "Back to counting" }));
+  await waitFor(() => expect(screen.getByText("recorded 6")).toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: "Review differences" }));
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  await waitFor(() => expect(posts()).toHaveLength(2));
+  expect(sent(1).counts.find((c) => c.film_id === "f1")?.expected).toBe(6);
+});
+
+it("uses a new batch id for an edited review but the same one for a plain retry", async () => {
+  respond = () => reply({ detail: "boom" }, 500);
+  const { user } = renderApp(<Stocktake onDone={() => {}} />);
+  const input = await screen.findByLabelText("Counted Tri-X 35mm");
+  await user.type(input, "4");
+  await user.click(screen.getByRole("button", { name: "Review differences" }));
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  await waitFor(() => expect(posts()).toHaveLength(2));
+  expect(sent(1).batch_id).toBe(sent(0).batch_id);
+
+  await user.click(screen.getByRole("button", { name: "Back to counting" }));
+  await user.clear(screen.getByLabelText("Counted Tri-X 35mm"));
+  await user.type(screen.getByLabelText("Counted Tri-X 35mm"), "3");
+  await user.click(screen.getByRole("button", { name: "Review differences" }));
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  await waitFor(() => expect(posts()).toHaveLength(3));
+  expect(sent(2).batch_id).not.toBe(sent(0).batch_id);
+});
+
+it("adding the same film and format twice makes one row", async () => {
+  const { user } = renderApp(<Stocktake onDone={() => {}} />);
+  await screen.findByLabelText("Counted Tri-X 35mm");
+  for (let i = 0; i < 2; i++) {
+    await user.selectOptions(screen.getByLabelText("Another film"), "f4");
+    await user.selectOptions(screen.getByLabelText("Format"), "m120");
+    await user.click(screen.getByRole("button", { name: "Add row" }));
+  }
+  expect(screen.getAllByLabelText("Counted Ektar 120")).toHaveLength(1);
+});
+
+it("rejects counts above 100,000", async () => {
+  const { user } = renderApp(<Stocktake onDone={() => {}} />);
+  await user.type(await screen.findByLabelText("Counted Tri-X 35mm"), "100001");
+  expect(screen.getByRole("button", { name: "Review differences" })).toBeDisabled();
+});
+
+it("keeps a flagged row visible when it now matches the count", async () => {
+  respond = () =>
+    reply(
+      {
+        detail: "Stock changed",
+        code: "stock_changed",
+        rows: [
+          { film_id: "f1", format_id: "m35", film: "Tri-X", format: "35mm", expected: 5, current: 4 },
+        ],
+      },
+      409,
+    );
+  const { user } = renderApp(<Stocktake onDone={() => {}} />);
+  await user.type(await screen.findByLabelText("Counted Tri-X 35mm"), "4");
+  await user.click(screen.getByRole("button", { name: "Review differences" }));
+  await user.click(await screen.findByRole("button", { name: "Apply 1 change" }));
+  expect(await screen.findByText("now matches")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Apply 0 changes" })).toBeDisabled();
 });

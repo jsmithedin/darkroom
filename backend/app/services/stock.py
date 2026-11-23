@@ -296,6 +296,11 @@ class StocktakeChangedError(Exception):
         super().__init__("Stock changed since you reviewed it. Check the flagged rows.")
 
 
+def _pair_key(m: StockMovement) -> tuple[str, str]:
+    """A stable order, so a replay lists the adjustments as the first response did."""
+    return (str(m.film_id), str(m.format_id))
+
+
 async def record_stocktake(
     db: AsyncSession, actor: Principal, data: StocktakeIn
 ) -> tuple[list[StockMovement], bool]:
@@ -312,9 +317,7 @@ async def record_stocktake(
     done = (
         (
             await db.execute(
-                select(StockMovement)
-                .where(StockMovement.count_batch_id == data.batch_id)
-                .order_by(StockMovement.created_at, StockMovement.id)
+                select(StockMovement).where(StockMovement.count_batch_id == data.batch_id)
             )
         )
         .scalars()
@@ -322,7 +325,7 @@ async def record_stocktake(
         .all()
     )
     if done:
-        return list(done), True
+        return sorted(done, key=_pair_key), True
     for count in data.counts:
         await _require(db, Film, count.film_id, "film")
         await _require(db, Format, count.format_id, "format")
@@ -362,11 +365,12 @@ async def record_stocktake(
         for c in data.counts
         if c.counted != before[(c.film_id, c.format_id)]
     ]
+    # Final stock equals the (non-negative) counted figure, so no non-negative check is needed.
     db.add_all(movements)
     await db.commit()
     for movement in movements:
         await db.refresh(movement)
-    return movements, False
+    return sorted(movements, key=_pair_key), False
 
 
 async def create_movement(db: AsyncSession, actor: Principal, data: MovementIn) -> StockMovement:
