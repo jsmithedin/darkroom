@@ -1,12 +1,14 @@
 import { type FormEvent, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   type FilmRef,
   type FilmType,
   type FormatRef,
+  type LowStockItem,
   type StockRow,
   useBulkRolls,
   useCreateAdjustment,
+  useLowStock,
   useStock,
 } from "../api/stock";
 import { BulkMeter } from "../components/BulkMeter";
@@ -75,6 +77,51 @@ function RecountForm({ initial, onDone }: { initial: Target; onDone: () => void 
       </div>
       <ErrorNote error={adjust.error} />
     </form>
+  );
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function LowStockPanel() {
+  const low = useLowStock();
+  if (low.isError) {
+    return (
+      <p role="alert" className="error">
+        Could not check for low stock: {low.error.message}
+      </p>
+    );
+  }
+  if (!low.data || low.data.length === 0) return null;
+  return (
+    <section aria-labelledby="running-low-heading" className="panel low-stock">
+      <h2 id="running-low-heading">Running low</h2>
+      <ul className="cards">
+        {low.data.map((item: LowStockItem) => (
+          <li key={`${item.film.id}:${item.format.id}`}>
+            <div className="row spread">
+              <strong>{item.film.name}</strong>
+              <span className="small">{item.format.name}</span>
+            </div>
+            <p className="small">
+              {item.rolls_remaining < 0
+                ? `None left (${-item.rolls_remaining} short).`
+                : `${plural(item.rolls_remaining, "roll")} left.`}{" "}
+              {plural(item.rolls_developed, "roll")} developed in the last {item.window_days} days,
+              about {plural(item.days_of_stock, "day")} of stock at that pace.
+              {item.on_bulk_spool && " There is bulk film on a spool, so you may only need to load cassettes."}
+            </p>
+            <Link
+              className="button"
+              to={`/purchases?film=${item.film.id}&format=${item.format.id}`}
+            >
+              Record a purchase
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -195,6 +242,7 @@ export function Stock() {
         )}
       </div>
 
+      <LowStockPanel />
       {counting && <Stocktake onDone={() => setCounting(false)} />}
       {target && <RecountForm key={`${target.film_id}:${target.format_id}`} initial={target} onDone={closeRecount} />}
 

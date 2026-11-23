@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -10,7 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from app.models import BulkRoll, Camera, Developer, Film, Format, Roll, StockMovement
-from app.schemas.stats import BreakdownRow, CameraIdle, MonthPoint, SpendYear, Stats, YtdCompare
+from app.models.stock import stock_levels
+from app.schemas.stats import (
+    BreakdownRow,
+    CameraIdle,
+    LowStock,
+    LowStockFilm,
+    LowStockFormat,
+    MonthPoint,
+    SpendYear,
+    Stats,
+    YtdCompare,
+)
 
 
 def london_today(now_utc: datetime, tz: str) -> date:
@@ -169,3 +180,59 @@ async def spend(db: AsyncSession) -> list[SpendYear]:
             )
         )
     return results
+
+
+# Rule for "regularly used and running low": at least MIN_ROLLS developed in the last
+# WINDOW_DAYS, and no more than COVER_DAYS of stock left at that pace. Only developed rolls
+# count as usage; purchases and recounts do not.
+WINDOW_DAYS = 90
+MIN_ROLLS = 3
+COVER_DAYS = 30
+
+
+async def low_stock(db: AsyncSession, today: date) -> list[LowStock]:
+    """Per film and format, using the current balance (zero when it has no stock row)."""
+    since = today - timedelta(days=WINDOW_DAYS - 1)
+    developed = func.count(Roll.id)
+    balance = func.coalesce(stock_levels.c.rolls, 0)
+    rows = await db.execute(
+        select(Film.id, Film.name, Film.type, Format.id, Format.name, developed, balance)
+        .select_from(Roll)
+        .join(Film, Film.id == Roll.film_id)
+        .join(Format, Format.id == Roll.format_id)
+        .outerjoin(
+            stock_levels,
+            (stock_levels.c.film_id == Roll.film_id) & (stock_levels.c.format_id == Roll.format_id),
+        )
+        .where(
+            Roll.dev_date >= since,
+            Roll.dev_date <= today,
+            Film.archived_at.is_(None),
+            Format.archived_at.is_(None),
+        )
+        .group_by(Film.id, Format.id, stock_levels.c.rolls)
+        .having(
+            developed >= MIN_ROLLS,
+            # balance / (developed / WINDOW_DAYS) <= COVER_DAYS, kept in integers
+            balance * WINDOW_DAYS <= COVER_DAYS * developed,
+        )
+    )
+    rows = list(rows)
+    spooled = set(
+        (await db.execute(select(BulkRoll.film_id).where(BulkRoll.finished.is_(False))))
+        .scalars()
+        .all()
+    )
+    found = [
+        LowStock(
+            film=LowStockFilm(id=film_id, name=film_name, type=film_type),
+            format=LowStockFormat(id=format_id, name=format_name),
+            rolls_remaining=int(remaining),
+            rolls_developed=int(count),
+            window_days=WINDOW_DAYS,
+            days_of_stock=max(0, int(remaining)) * WINDOW_DAYS // int(count),
+            on_bulk_spool=str(format_name).lower() == "35mm" and film_id in spooled,
+        )
+        for film_id, film_name, film_type, format_id, format_name, count, remaining in rows
+    ]
+    return sorted(found, key=lambda r: (r.days_of_stock, r.film.name, r.format.name))
