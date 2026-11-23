@@ -70,6 +70,30 @@ class AdjustmentIn(_In):
     notes: Notes | None = None
 
 
+class CountIn(_In):
+    film_id: uuid.UUID
+    format_id: uuid.UUID
+    counted: Annotated[int, Field(ge=0, le=100_000)]
+    expected: Annotated[int, Field(ge=-100_000, le=100_000)]  # the recorded balance reviewed
+
+
+class StocktakeIn(_In):
+    """Several counts reviewed together. `batch_id` is chosen by the client once per review, so a
+    retry of the same request applies nothing twice."""
+
+    batch_id: uuid.UUID
+    occurred_on: date
+    notes: Notes | None = None
+    counts: Annotated[list[CountIn], Field(min_length=1, max_length=500)]
+
+    @model_validator(mode="after")
+    def _distinct_pairs(self) -> "StocktakeIn":
+        pairs = [(c.film_id, c.format_id) for c in self.counts]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError("each film and format can be counted once")
+        return self
+
+
 class MovementUpdate(_In):
     """Only fields that make sense for the movement's kind are accepted (checked by the service)."""
 

@@ -102,6 +102,7 @@ class StockMovement(AuditMixin, Base):
             name="opening_shape",
         ),
         Index("ix_stock_movements_film_format", "film_id", "format_id"),
+        Index("ix_stock_movements_count_batch", "count_batch_id"),
         Index("ix_stock_movements_occurred_on", "occurred_on"),
     )
 
@@ -119,6 +120,8 @@ class StockMovement(AuditMixin, Base):
     exposures_per_cassette: Mapped[int | None] = mapped_column(Integer, default=None)
     metres_mm: Mapped[int | None] = mapped_column(Integer, default=None)
     counted_to: Mapped[int | None] = mapped_column(Integer, default=None)
+    # Set on adjustments made by one stocktake; a retry of the same batch finds them and stops.
+    count_batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, default=None)
 
     film: Mapped[Film] = relationship(lazy="joined")
     format: Mapped[Format] = relationship(lazy="joined")

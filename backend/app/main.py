@@ -22,7 +22,7 @@ from app.auth.google import GoogleOIDC
 from app.config import Settings
 from app.db import make_engine
 from app.mcp.server import build_mcp, transport_security
-from app.services.stock import InsufficientStockError
+from app.services.stock import InsufficientStockError, StocktakeChangedError
 from app.spa import RootApp
 
 
@@ -45,6 +45,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Darkroom", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
     )
+
+    @app.exception_handler(StocktakeChangedError)
+    async def stocktake_changed(_: Request, exc: StocktakeChangedError) -> JSONResponse:
+        """409 listing the rows whose stock moved since the counts were reviewed."""
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": str(exc),
+                "code": "stock_changed",
+                "rows": [
+                    {
+                        "film_id": str(r.film_id),
+                        "format_id": str(r.format_id),
+                        "film": r.film_name,
+                        "format": r.format_name,
+                        "expected": r.expected,
+                        "current": r.current,
+                    }
+                    for r in exc.rows
+                ],
+            },
+        )
 
     @app.exception_handler(InsufficientStockError)
     async def insufficient_stock(_: Request, exc: InsufficientStockError) -> JSONResponse:
