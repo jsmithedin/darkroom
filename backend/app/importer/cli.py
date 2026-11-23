@@ -59,8 +59,12 @@ async def import_folder(
         "Already imported: "
         + (", ".join(f"{t} {n}" for t, n in report.skipped.items()) or "nothing")
     )
-    figures = await reconcile(session)
+    figures = await reconcile(session, imported_only=True)
+    everything = await reconcile(session)
     out.append(figures.report())
+    other = everything.total_rolls - figures.total_rolls
+    if other:
+        out.append(f"({other} roll(s) already in the database are not part of this check)")
     problems = figures.check(expected)
     if problems:
         await session.rollback()

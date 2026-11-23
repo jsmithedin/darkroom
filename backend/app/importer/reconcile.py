@@ -1,11 +1,12 @@
 """Compare the database with the totals the sheet is known to have."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
-from sqlalchemy import extract, func, select
+from sqlalchemy import ColumnElement, Select, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import BulkRoll, Format, Roll, StockMovement
+from app.models import BulkRoll, Format, ImportLedger, Roll, StockMovement
 from app.models.stock import stock_levels
 
 
@@ -60,31 +61,56 @@ class Reconciliation:
         )
 
 
-async def reconcile(session: AsyncSession) -> Reconciliation:
-    """Read the figures back from the database (not from what the importer thinks it wrote)."""
-    total = (await session.execute(select(func.count()).select_from(Roll))).scalar_one()
+async def reconcile(session: AsyncSession, imported_only: bool = False) -> Reconciliation:
+    """Read the figures back from the database (not from what the importer thinks it wrote).
+
+    With `imported_only`, count just the records the import ledger says came from the sheet, so
+    rolls and stock already entered in the app do not disturb the comparison."""
+
+    def imported(tab: str) -> Select[Any]:
+        return select(ImportLedger.record_id).where(ImportLedger.tab == tab)
+
+    roll_scope: list[ColumnElement[bool]] = (
+        [Roll.id.in_(imported("tracker"))] if imported_only else []
+    )
+    spool_scope: list[ColumnElement[bool]] = (
+        [BulkRoll.id.in_(imported("bulk"))] if imported_only else []
+    )
+    movement_scope: list[ColumnElement[bool]] = (
+        [StockMovement.id.in_(imported("openings").union(imported("purchases")))]
+        if imported_only
+        else []
+    )
+    total = (
+        await session.execute(select(func.count()).select_from(Roll).where(*roll_scope))
+    ).scalar_one()
     year = extract("year", Roll.dev_date)
     per_year = {
         int(y): int(n)
-        for y, n in (await session.execute(select(year, func.count()).group_by(year))).all()
-    }
-    stock = {
-        str(name): int(n)
-        for name, n in (
-            await session.execute(
-                select(Format.name, func.sum(stock_levels.c.rolls))
-                .join(Format, Format.id == stock_levels.c.format_id)
-                .group_by(Format.name)
-            )
+        for y, n in (
+            await session.execute(select(year, func.count()).where(*roll_scope).group_by(year))
         ).all()
-        if n
     }
+    if imported_only:
+        stock = await _imported_stock(session, roll_scope, movement_scope)
+    else:
+        stock = {
+            str(name): int(n)
+            for name, n in (
+                await session.execute(
+                    select(Format.name, func.sum(stock_levels.c.rolls))
+                    .join(Format, Format.id == stock_levels.c.format_id)
+                    .group_by(Format.name)
+                )
+            ).all()
+            if n
+        }
     loaded = (
         select(
             StockMovement.bulk_roll_id.label("bulk_id"),
             func.coalesce(func.sum(StockMovement.metres_mm), 0).label("mm"),
         )
-        .where(StockMovement.kind == "bulk_load")
+        .where(StockMovement.kind == "bulk_load", *movement_scope)
         .group_by(StockMovement.bulk_roll_id)
         .subquery()
     )
@@ -97,8 +123,37 @@ async def reconcile(session: AsyncSession) -> Reconciliation:
                     BulkRoll.length_mm,
                     BulkRoll.used_before_mm,
                     func.coalesce(loaded.c.mm, 0),
-                ).outerjoin(loaded, loaded.c.bulk_id == BulkRoll.id)
+                )
+                .where(*spool_scope)
+                .outerjoin(loaded, loaded.c.bulk_id == BulkRoll.id)
             )
         ).all()
     }
     return Reconciliation(int(total), per_year, stock, bulk)
+
+
+async def _imported_stock(
+    session: AsyncSession,
+    roll_scope: list[ColumnElement[bool]],
+    movement_scope: list[ColumnElement[bool]],
+) -> dict[str, int]:
+    """Stock per format from imported movements, less imported rolls that count against stock."""
+    stock: dict[str, int] = {}
+    moved = await session.execute(
+        select(Format.name, func.sum(StockMovement.rolls))
+        .join(Format, Format.id == StockMovement.format_id)
+        .where(*movement_scope)
+        .group_by(Format.name)
+    )
+    for name, n in moved.all():
+        stock[str(name)] = int(n)
+    used = await session.execute(
+        select(Format.name, func.count())
+        .select_from(Roll)
+        .join(Format, Format.id == Roll.format_id)
+        .where(Roll.counts_against_stock, *roll_scope)
+        .group_by(Format.name)
+    )
+    for name, n in used.all():
+        stock[str(name)] = stock.get(str(name), 0) - int(n)
+    return {k: v for k, v in stock.items() if v}

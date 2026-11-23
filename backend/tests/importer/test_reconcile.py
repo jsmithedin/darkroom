@@ -130,3 +130,34 @@ async def test_missing_files_are_reported(db_session: AsyncSession, tmp_path: Pa
 async def test_reconcile_reads_the_database(db_session: AsyncSession) -> None:
     figures = await reconcile(db_session)
     assert figures.total_rolls == 0 and figures.bulk_left_mm == {}
+
+
+async def test_rolls_already_in_the_app_do_not_disturb_the_check(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    from datetime import date
+
+    from app.models import Camera, Developer, Film, Format
+
+    folder = await sheet_folder(tmp_path, db_session)
+    fmt = Format(name="4x5")
+    db_session.add_all([fmt, Camera(name="App cam"), Developer(name="App dev")])
+    film = Film(name="App film", type="bw", box_iso=100)
+    db_session.add(film)
+    await db_session.flush()
+    cam = (await db_session.execute(select(Camera))).scalar_one()
+    dev = (await db_session.execute(select(Developer))).scalar_one()
+    db_session.add(
+        Roll(
+            dev_date=date(2026, 11, 23),
+            camera_id=cam.id,
+            format_id=fmt.id,
+            film_id=film.id,
+            ei=100,
+            developer_id=dev.id,
+        )
+    )
+    await db_session.flush()
+    code, lines = await import_folder(db_session, folder, MATCHING)
+    assert code == 0, lines
+    assert "(1 roll(s) already in the database are not part of this check)" in lines
