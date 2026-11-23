@@ -2,6 +2,7 @@
 
 from app.models.auth import PersonalAccessToken, User, UserSession
 from app.models.base import AuditMixin, Base
+from app.models.imports import ImportLedger
 from app.models.reference import (
     AppSettings,
     Camera,
@@ -25,6 +26,7 @@ __all__ = [
     "Film",
     "Filter",
     "Format",
+    "ImportLedger",
     "Lens",
     "PersonalAccessToken",
     "RefKind",

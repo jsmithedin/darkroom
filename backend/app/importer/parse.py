@@ -742,7 +742,20 @@ def parse_dev_time_refs(path: Path) -> list[DevTimeRef]:
     return rows
 
 
-def parse_all(folder: Path) -> dict[str, object]:
+@dataclass(frozen=True)
+class ParsedSheet:
+    """Everything read from the exports, ready for the loader."""
+
+    tracker: list[RollRow]
+    films: list[FilmRow]
+    openings: list[OpeningRow]
+    lists: ListsData
+    bulk: list[BulkRow]
+    purchases: list[PurchaseRow]
+    dev_times: list[DevTimeRef]
+
+
+def parse_all(folder: Path) -> ParsedSheet:
     """Parse every export in `folder` (Tracker.csv, Films.csv, ...), reporting all files' problems
     together."""
     names = {
@@ -766,7 +779,16 @@ def parse_all(folder: Path) -> dict[str, object]:
             problems.extend(f"{filename}: {p}" for p in exc.problems)
     if problems:
         raise ParseError(folder, problems)
-    return result
+    films_and_openings: tuple[list[FilmRow], list[OpeningRow]] = result["films"]  # type: ignore[assignment]
+    return ParsedSheet(
+        tracker=result["tracker"],  # type: ignore[arg-type]
+        films=films_and_openings[0],
+        openings=films_and_openings[1],
+        lists=result["lists"],  # type: ignore[arg-type]
+        bulk=result["bulk"],  # type: ignore[arg-type]
+        purchases=result["purchases"],  # type: ignore[arg-type]
+        dev_times=result["dev_times"],  # type: ignore[arg-type]
+    )
 
 
 __all__ = [
@@ -777,6 +799,7 @@ __all__ = [
     "ListsData",
     "OpeningRow",
     "ParseError",
+    "ParsedSheet",
     "PurchaseRow",
     "RollRow",
     "parse_all",
