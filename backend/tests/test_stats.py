@@ -7,7 +7,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState
 
-from app.services.stats import camera_idle, get_stats, london_today
+from app.services.stats import camera_idle, get_stats, london_today, low_stock
 from tests.support import roll_body
 
 
@@ -162,7 +162,12 @@ async def test_spend_excludes_unpriced_and_undated_bulk(
 
 
 async def test_stats_require_sign_in(client: AsyncClient) -> None:
-    for path in ("/api/stats", "/api/stats/camera-idle", "/api/stats/spend"):
+    for path in (
+        "/api/stats",
+        "/api/stats/camera-idle",
+        "/api/stats/spend",
+        "/api/stats/low-stock",
+    ):
         assert (await client.get(path)).status_code == 401
 
 
@@ -187,3 +192,66 @@ async def test_default_year_uses_configured_timezone(
     result = await authed.get("/api/stats")
     assert result.status_code == 200, result.text
     assert result.json()["year"] == 2026
+
+
+async def stock_up(
+    client: AsyncClient, gear: dict[str, str], rolls: int, fmt: str = "format35"
+) -> None:
+    result = await client.post(
+        "/api/stock-movements",
+        json={
+            "kind": "purchase",
+            "film_id": gear["film"],
+            "format_id": gear[fmt],
+            "occurred_on": "2026-01-01",
+            "rolls": rolls,
+            "cost_pence": 0,
+        },
+    )
+    assert result.status_code == 201, result.text
+
+
+async def test_low_stock_rule(
+    authed: AsyncClient, gear: dict[str, str], db_session: AsyncSession
+) -> None:
+    today = date(2026, 11, 23)
+    for day in ("2026-09-01", "2026-10-01", "2026-11-01", "2026-11-10", "2026-11-20", "2026-11-22"):
+        await add_roll(authed, gear, day)  # six rolls in the window
+    await stock_up(authed, gear, 2)
+    [row] = await low_stock(db_session, today)
+    assert (row.rolls_remaining, row.rolls_developed, row.days_of_stock) == (2, 6, 30)
+
+    await stock_up(authed, gear, 1)  # three left: 45 days of cover
+    assert await low_stock(db_session, today) == []
+
+
+async def test_low_stock_needs_regular_use_and_ignores_purchases(
+    authed: AsyncClient, gear: dict[str, str], db_session: AsyncSession
+) -> None:
+    today = date(2026, 11, 23)
+    for day in ("2026-11-01", "2026-11-10"):  # two rolls: not regular
+        await add_roll(authed, gear, day)
+    assert await low_stock(db_session, today) == []
+    await add_roll(authed, gear, "2026-08-25")  # 90 days back from today is 2026-08-26: outside
+    assert await low_stock(db_session, today) == []
+    await add_roll(authed, gear, "2026-08-26")  # inside the window: third roll
+    [row] = await low_stock(db_session, today)
+    assert (row.rolls_remaining, row.rolls_developed) == (0, 3)
+
+
+async def test_low_stock_covers_zero_and_negative_balances_per_format(
+    authed: AsyncClient, gear: dict[str, str], db_session: AsyncSession
+) -> None:
+    today = date(2026, 11, 23)
+    for day in ("2026-11-01", "2026-11-02", "2026-11-03"):
+        await add_roll(authed, gear, day)  # 35mm
+        await add_roll(authed, gear, day, format_id=gear["format120"])
+    await stock_up(authed, gear, 50, "format120")  # plenty of 120
+    rows = await low_stock(db_session, today)
+    assert [(r.format.name, r.rolls_remaining) for r in rows] == [("35mm", 0)]
+
+
+async def test_low_stock_endpoint(authed: AsyncClient, gear: dict[str, str]) -> None:
+    resp = await authed.get("/api/stats/low-stock")
+    assert resp.status_code == 200
+    assert resp.json() == []

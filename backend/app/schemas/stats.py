@@ -41,3 +41,25 @@ class SpendYear(BaseModel):
     bulk_pence: int
     rolls: int
     cost_per_roll_pence: int | None
+
+
+class LowStockFilm(BaseModel):
+    id: UUID
+    name: str
+    type: str
+
+
+class LowStockFormat(BaseModel):
+    id: UUID
+    name: str
+
+
+class LowStock(BaseModel):
+    """Film regularly developed and close to running out, with the figures behind the call."""
+
+    film: LowStockFilm
+    format: LowStockFormat
+    rolls_remaining: int
+    rolls_developed: int
+    window_days: int
+    days_of_stock: int

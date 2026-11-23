@@ -4,9 +4,11 @@ import {
   type FilmRef,
   type FilmType,
   type FormatRef,
+  type LowStockItem,
   type StockRow,
   useBulkRolls,
   useCreateAdjustment,
+  useLowStock,
   useStock,
 } from "../api/stock";
 import { BulkMeter } from "../components/BulkMeter";
@@ -75,6 +77,42 @@ function RecountForm({ initial, onDone }: { initial: Target; onDone: () => void 
       </div>
       <ErrorNote error={adjust.error} />
     </form>
+  );
+}
+
+function plural(n: number, word: string) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function LowStockPanel() {
+  const low = useLowStock();
+  if (low.isError) {
+    return (
+      <p role="alert" className="error">
+        Could not check for low stock: {low.error.message}
+      </p>
+    );
+  }
+  if (!low.data || low.data.length === 0) return null;
+  return (
+    <section aria-label="Running low" className="panel">
+      <h2>Running low</h2>
+      <ul className="cards">
+        {low.data.map((item: LowStockItem) => (
+          <li key={`${item.film.id}:${item.format.id}`}>
+            <div className="row spread">
+              <strong>{item.film.name}</strong>
+              <span className="small">{item.format.name}</span>
+            </div>
+            <p className="small">
+              {plural(item.rolls_remaining, "roll")} left. {plural(item.rolls_developed, "roll")}{" "}
+              developed in the last {item.window_days} days, about {plural(item.days_of_stock, "day")}{" "}
+              of stock at that pace.
+            </p>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -195,6 +233,7 @@ export function Stock() {
         )}
       </div>
 
+      <LowStockPanel />
       {counting && <Stocktake onDone={() => setCounting(false)} />}
       {target && <RecountForm key={`${target.film_id}:${target.format_id}`} initial={target} onDone={closeRecount} />}
 

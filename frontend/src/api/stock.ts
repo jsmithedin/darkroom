@@ -129,6 +129,24 @@ export function insufficientStock(error: unknown): InsufficientStock | null {
   };
 }
 
+export interface LowStockItem {
+  film: FilmRef;
+  format: FormatRef;
+  rolls_remaining: number;
+  rolls_developed: number;
+  window_days: number;
+  days_of_stock: number;
+}
+
+/** Film developed regularly and close to running out. Under the "stock" key so any stock or
+ * roll write refreshes it. */
+export function useLowStock() {
+  return useQuery({
+    queryKey: ["stock", "low"],
+    queryFn: () => apiFetch<LowStockItem[]>("/api/stats/low-stock"),
+  });
+}
+
 export function useStock(includeZero: boolean) {
   return useQuery({
     queryKey: ["stock", { includeZero }],

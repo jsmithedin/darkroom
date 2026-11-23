@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principal import READ, Principal, require_scope
 from app.db import get_session
-from app.schemas.stats import CameraIdle, SpendYear, Stats
+from app.schemas.stats import CameraIdle, LowStock, SpendYear, Stats
 from app.services import stats as svc
 from app.services.settings import get_settings
 
@@ -33,3 +33,10 @@ async def read_camera_idle(_: Reader, db: Db) -> list[CameraIdle]:
 @router.get("/spend")
 async def read_spend(_: Reader, db: Db) -> list[SpendYear]:
     return await svc.spend(db)
+
+
+@router.get("/low-stock")
+async def read_low_stock(_: Reader, db: Db) -> list[LowStock]:
+    settings = await get_settings(db)
+    today = svc.london_today(datetime.now(UTC), settings.timezone)
+    return await svc.low_stock(db, today)
