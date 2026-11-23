@@ -38,6 +38,8 @@ class RootApp:
         candidate = (self.dist / path.lstrip("/")).resolve()
         if candidate.is_file() and candidate.is_relative_to(self.dist):
             return FileResponse(candidate)
+        if _owned_by(path, ("/assets",)):
+            return not_found
         index = self.dist / "index.html"
         if index.is_file():
             return FileResponse(index)

@@ -38,6 +38,12 @@ async def test_static_asset_served(spa_client: AsyncClient) -> None:
     assert resp.text == "console.log(1)"
 
 
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+async def test_missing_static_asset_returns_404(spa_client: AsyncClient, method: str) -> None:
+    resp = await spa_client.request(method, "/assets/old-build.js")
+    assert resp.status_code == 404
+
+
 async def test_unknown_api_path_is_json_404(spa_client: AsyncClient) -> None:
     resp = await spa_client.get("/api/nope")
     assert resp.status_code == 404
