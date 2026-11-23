@@ -17,6 +17,7 @@ from app.importer.load import LoadError, UnknownNames, load_all
 from app.importer.parse import ParseError, parse_all
 from app.importer.reconcile import Expected, reconcile
 from app.models import User
+from app.services.stock import InsufficientStockError
 
 
 def _counts(counts: dict[str, int]) -> str:
@@ -46,6 +47,11 @@ async def import_folder(
         ]
     except LoadError as exc:
         return 2, [f"Import refused, nothing imported: {exc}"]
+    except InsufficientStockError as exc:
+        return 2, [
+            "Import refused, nothing imported: stock of "
+            f"{exc.film_name} ({exc.format_name}) would go below zero."
+        ]
     out.append(
         "Inserted: " + (", ".join(f"{t} {n}" for t, n in report.inserted.items()) or "nothing")
     )

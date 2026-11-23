@@ -109,6 +109,19 @@ async def test_unknown_names_exit_with_the_list(db_session: AsyncSession, tmp_pa
     assert code == 2 and "  camera: Nikon" in lines
 
 
+async def test_overdrawn_stock_is_refused_with_exit_2(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    folder = await sheet_folder(tmp_path, db_session)
+    (folder / "Tracker.csv").write_text(
+        "Dev date,Camera,Lens,Format,Film,EI,Developer\n"
+        + "01/12/2026,Nikon,N/A,35mm,Tri-X,400,HC-110\n" * 6
+    )
+    code, lines = await import_folder(db_session, folder, MATCHING)
+    assert code == 2
+    assert lines == ["Import refused, nothing imported: stock of Tri-X (35mm) would go below zero."]
+
+
 async def test_missing_files_are_reported(db_session: AsyncSession, tmp_path: Path) -> None:
     code, lines = await import_folder(db_session, tmp_path, MATCHING)
     assert code == 2 and "Could not read the exports:" in lines[0]
