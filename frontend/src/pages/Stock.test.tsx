@@ -41,7 +41,7 @@ beforeEach(() => {
         const all = url.includes("include_zero=true");
         return reply(all ? rows : rows.filter((r) => r.rolls !== 0));
       }
-      if (url.startsWith("/api/bulk-rolls")) return reply([spool]);
+      if (url.startsWith("/api/bulk-rolls")) return reply([spool, { ...spool, id: "b2", label: "Bulk 2", film: rows[2].film, left_mm: 500, exposures_left: 8 }]);
       if (url === "/api/stock-adjustments" && method === "POST") return reply({ id: "adj" }, 201);
       return undefined;
     },
@@ -71,12 +71,13 @@ it("shows a meter for each unfinished bulk spool", async () => {
   const bulk = await screen.findByRole("region", { name: "Bulk film" });
   expect(within(bulk).getByText("Bulk 1")).toBeInTheDocument();
   expect(within(bulk).getByText(/185 exposures left/)).toBeInTheDocument();
-  expect(within(bulk).getByRole("meter")).toBeInTheDocument();
+  expect(within(bulk).getAllByRole("meter")).toHaveLength(2);
 });
 
 it("recounts a row's stock", async () => {
   const { user } = renderApp(<Stock />);
   const bw = await screen.findByRole("region", { name: "Black and white" });
+  await user.selectOptions(screen.getByLabelText("Roll format"), "m35");
   await user.click(within(bw).getAllByRole("button", { name: "Recount" })[0]);
 
   const form = await screen.findByRole("form", { name: "Recount stock" });
@@ -95,4 +96,39 @@ it("opens the recount form from a link on a refused write", async () => {
   const form = await screen.findByRole("form", { name: "Recount stock" });
   await waitFor(() => expect(within(form).getByLabelText("Film")).toHaveValue("f3"));
   expect(within(form).getByLabelText("Format")).toHaveValue("m120");
+});
+
+it("combines filters and limits the format filter to individual rolls", async () => {
+  const { user } = renderApp(<Stock />);
+  await screen.findByText("Tri-X");
+  await user.selectOptions(screen.getByLabelText("Roll format"), "m35");
+  await user.selectOptions(screen.getByLabelText("Film type"), "colour");
+  expect(screen.getByText("No individual rolls match your filters.")).toBeVisible();
+  expect(screen.getByText("Bulk 2")).toBeVisible();
+  expect(screen.queryByText("Bulk 1")).toBeNull();
+  await user.selectOptions(screen.getByLabelText("Roll format"), "");
+  await user.type(screen.getByLabelText("Film name"), " PORTRA ");
+  expect(screen.getAllByText("Portra 400")).toHaveLength(2);
+  await user.type(screen.getByLabelText("Film name"), "x");
+  expect(screen.getByText("No bulk film matches your filters.")).toBeVisible();
+  expect(screen.getByText("No individual rolls match your filters.")).toBeVisible();
+});
+
+it("sorts across film types and orders bulk spools independently", async () => {
+  const { user } = renderApp(<Stock />);
+  await screen.findByText("Tri-X");
+  const sort = screen.getByLabelText("Sort rolls");
+  for (const [order, expected] of [
+    ["fewest", ["Velvia", "Portra 400", "Tri-X"]],
+    ["most", ["Tri-X", "Portra 400", "Velvia"]],
+    ["name", ["Portra 400", "Tri-X", "Velvia"]],
+  ] as const) {
+    await user.selectOptions(sort, order);
+    const rolls = screen.getByRole("region", { name: "Individual rolls" });
+    expect(within(rolls).getAllByRole("listitem").map((li) => li.querySelector("strong")?.textContent))
+      .toEqual(expected);
+  }
+  await user.selectOptions(screen.getByLabelText("Sort bulk film"), "remaining");
+  const bulk = screen.getByRole("region", { name: "Bulk film" });
+  expect(within(bulk).getAllByRole("listitem")[0]).toHaveTextContent("Bulk 2");
 });

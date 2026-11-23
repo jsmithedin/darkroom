@@ -1,7 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  type FilmRef,
   type FilmType,
+  type FormatRef,
   type StockRow,
   useBulkRolls,
   useCreateAdjustment,
@@ -75,10 +77,20 @@ function RecountForm({ initial, onDone }: { initial: Target; onDone: () => void 
   );
 }
 
-function groupByType(rows: StockRow[]): [FilmType, StockRow[]][] {
-  return TYPE_ORDER.map((t) => [t, rows.filter((r) => r.film.type === t)] as [FilmType, StockRow[]]).filter(
-    ([, list]) => list.length > 0,
-  );
+function rollSections(rows: StockRow[], sort: string) {
+  if (sort === "type") {
+    return TYPE_ORDER.map((type) => ({
+      title: TYPE_LABEL[type],
+      rows: rows.filter((row) => row.film.type === type),
+    })).filter((section) => section.rows.length > 0);
+  }
+
+  rows.sort((a, b) => {
+    if (sort === "fewest" && a.rolls !== b.rolls) return a.rolls - b.rolls;
+    if (sort === "most" && a.rolls !== b.rolls) return b.rolls - a.rolls;
+    return a.film.name.localeCompare(b.film.name) || a.format.name.localeCompare(b.format.name);
+  });
+  return rows.length ? [{ title: "Individual rolls", rows }] : [];
 }
 
 export function Stock() {
@@ -86,6 +98,25 @@ export function Stock() {
   const [showEmpty, setShowEmpty] = useState(false);
   const stock = useStock(showEmpty);
   const spools = useBulkRolls({ includeFinished: false });
+
+  const [search, setSearch] = useState("");
+  const [filmType, setFilmType] = useState("");
+  const [format, setFormat] = useState<FormatRef | null>(null);
+  const [rollSort, setRollSort] = useState("type");
+  const [bulkSort, setBulkSort] = useState("default");
+  const query = search.trim().toLowerCase();
+
+  function matchesFilm(film: FilmRef) {
+    return (!filmType || film.type === filmType) && film.name.toLowerCase().includes(query);
+  }
+
+  const formats = new Map(stock.data?.map(({ format }) => [format.id, format.name]));
+  if (format) formats.set(format.id, format.name);
+  const rolls = (stock.data ?? []).filter((row) =>
+    matchesFilm(row.film) && (!format || row.format.id === format.id)
+  );
+  const visibleSpools = (spools.data ?? []).filter((spool) => matchesFilm(spool.film));
+  if (bulkSort === "remaining") visibleSpools.sort((a, b) => a.left_mm - b.left_mm);
 
   // ?recount=film:format opens the recount form (the link on a refused write)
   const fromLink = params.get("recount")?.split(":");
@@ -103,6 +134,40 @@ export function Stock() {
   return (
     <>
       <h1>Stock</h1>
+      <div className="row">
+        <label>
+          Film name
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
+        <label>
+          Film type
+          <select value={filmType} onChange={(e) => setFilmType(e.target.value)}>
+            <option value="">All types</option>
+            {TYPE_ORDER.map((type) => <option key={type} value={type}>{TYPE_LABEL[type]}</option>)}
+          </select>
+        </label>
+        <label>
+          Roll format
+          <select value={format?.id ?? ""} onChange={(e) => {
+            const id = e.target.value;
+            setFormat(id ? { id, name: e.target.selectedOptions[0].text } : null);
+          }}>
+            <option value="">All formats</option>
+            {Array.from(formats).sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) =>
+              <option key={id} value={id}>{name}</option>
+            )}
+          </select>
+        </label>
+        <label>
+          Sort rolls
+          <select value={rollSort} onChange={(e) => setRollSort(e.target.value)}>
+            <option value="type">Group by film type</option>
+            <option value="name">Name A–Z</option>
+            <option value="fewest">Fewest rolls first</option>
+            <option value="most">Most rolls first</option>
+          </select>
+        </label>
+      </div>
       <div className="row spread">
         <label className="check">
           <input
@@ -131,11 +196,11 @@ export function Stock() {
           {stock.error.message}
         </p>
       )}
-      {stock.data && stock.data.length === 0 && <p>No film in stock.</p>}
-      {stock.data &&
-        groupByType(stock.data).map(([type, rows]) => (
-          <section key={type} aria-label={TYPE_LABEL[type]}>
-            <h2>{TYPE_LABEL[type]}</h2>
+      {stock.data && stock.data.length === 0 && <p>No individual rolls in stock.</p>}
+      {!!stock.data?.length && rolls.length === 0 && <p>No individual rolls match your filters.</p>}
+      {rollSections(rolls, rollSort).map(({ title, rows }) => (
+          <section key={title} aria-label={title}>
+            <h2>{title}</h2>
             <ul className="cards">
               {rows.map((r) => (
                 <li key={`${r.film.id}:${r.format.id}`} className={r.rolls === 0 ? "muted" : ""}>
@@ -162,8 +227,18 @@ export function Stock() {
       {spools.data && spools.data.length > 0 && (
         <section aria-label="Bulk film">
           <h2>Bulk film</h2>
+          {spools.data.length > 1 && (
+            <label>
+              Sort bulk film
+              <select value={bulkSort} onChange={(e) => setBulkSort(e.target.value)}>
+                <option value="default">Default order</option>
+                <option value="remaining">Least film remaining</option>
+              </select>
+            </label>
+          )}
+          {visibleSpools.length === 0 && <p>No bulk film matches your filters.</p>}
           <ul className="cards">
-            {spools.data.map((b) => (
+            {visibleSpools.map((b) => (
               <li key={b.id}>
                 <div className="row spread">
                   <strong>{b.label}</strong>
