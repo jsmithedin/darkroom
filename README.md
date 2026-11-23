@@ -39,7 +39,7 @@ Interactive docs are at `/api/docs` (and `/api/redoc`), and the OpenAPI schema a
 
 ## MCP OAuth discovery
 
-The public discovery documents are `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`. Both use `PUBLIC_BASE_URL` to identify the issuer. Client registration, token issuance and bearer enforcement are later Phase 6 tasks.
+The public discovery documents are `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`. Both use `PUBLIC_BASE_URL` to identify the issuer. Public OAuth clients register at `/oauth/register` with HTTPS or HTTP loopback redirect URIs. Darkroom allows 20 registrations per minute across app instances. At `/oauth/authorize`, users sign in with Google and can approve or deny the requested film scopes. Token exchange and MCP bearer authentication are later Phase 6 tasks.
 
 ## CI
 

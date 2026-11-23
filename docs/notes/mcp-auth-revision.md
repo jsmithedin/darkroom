@@ -42,5 +42,10 @@ Discovery advertises the public-client authorization code and refresh token
 grants. The SDK serves protected-resource metadata with the same issuer as
 the authorization server document. Migration 0010 adds OAuth clients,
 hashed authorization codes, and hashed access and refresh tokens with a rotation
-family ID. Registration, code exchange and bearer enforcement follow in tasks
-6.2 through 6.4.
+family ID.
+
+Task 6.2 adds dynamic registration for public clients, Google sign-in and a
+local consent form. Registration accepts exact HTTPS and HTTP loopback
+callback URLs, with a shared limit of 20 registrations per minute.
+Task 6.3 exchanges the resulting codes for tokens, and Task 6.4 enforces
+bearer authentication.
