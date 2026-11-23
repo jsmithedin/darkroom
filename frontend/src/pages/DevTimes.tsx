@@ -107,7 +107,8 @@ function Reference({ group }: { group: DevTimeGroup }) {
   }
 
   return (
-    <p className="row">
+    <div>
+      <p className="row">
       <span>
         Reference: <strong>{ref.minutes} min</strong>
         {ref.notes ? ` (${ref.notes})` : ""}
@@ -131,7 +132,9 @@ function Reference({ group }: { group: DevTimeGroup }) {
       >
         Delete
       </button>
-    </p>
+      </p>
+      <ErrorNote error={remove.error} />
+    </div>
   );
 }
 
@@ -194,7 +197,7 @@ export function DevTimes() {
               <tbody>
                 {g.entries.map((e) => (
                   <tr key={e.roll_id}>
-                    <td>{new Date(e.dev_date).toLocaleDateString()}</td>
+                    <td>{new Date(e.dev_date).toLocaleDateString(undefined, { timeZone: "UTC" })}</td>
                     <td>{e.minutes}</td>
                   </tr>
                 ))}

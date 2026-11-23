@@ -126,9 +126,9 @@ async def create_ref(db: AsyncSession, actor: Principal, data: DevTimeRefIn) -> 
         raise ConflictError(CONFLICT)
     ref = DevTimeRef(**data.model_dump(), created_by=actor.user_id, updated_by=actor.user_id)
     db.add(ref)
-    await db.flush()
-    ref_id = ref.id
     try:
+        await db.flush()
+        ref_id = ref.id
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

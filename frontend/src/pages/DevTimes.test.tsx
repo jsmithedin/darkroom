@@ -89,3 +89,23 @@ it("edits and deletes a reference time", async () => {
   await user.click(within(group).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(api.calls.some((c) => c.method === "DELETE")).toBe(true));
 });
+
+it("shows why a delete failed", async () => {
+  api.handler = (url, method) => {
+    if (url.startsWith("/api/dev-times")) return reply(groups);
+    if (method === "DELETE") return reply({ detail: "Cannot delete right now." }, 409);
+    return undefined;
+  };
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  const { user } = renderApp(<DevTimes />);
+  const group = await screen.findByRole("region", { name: "Tri-X at EI 400 in HC-110" });
+  await user.click(within(group).getByRole("button", { name: "Delete" }));
+  expect(await within(group).findByRole("alert")).toHaveTextContent("Cannot delete right now.");
+});
+
+it("shows the logged date as written, whatever the time zone", async () => {
+  renderApp(<DevTimes />);
+  const group = await screen.findByRole("region", { name: "Tri-X at EI 400 in HC-110" });
+  const expected = new Date("2026-03-01").toLocaleDateString(undefined, { timeZone: "UTC" });
+  expect(within(group).getByText(expected)).toBeInTheDocument();
+});
