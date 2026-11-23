@@ -9,6 +9,7 @@ problem found in a file is collected and reported together, so one run shows eve
 
 import csv
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -169,17 +170,42 @@ def parse_int(s: str | None, what: str) -> int | None:
     return int(value)
 
 
+def scale_exact(value: Decimal, places: int, what: str, shown: str) -> int:
+    """`value` times 10**places as an int, or ValueError unless that is a whole, non-negative
+    number. Pure integer arithmetic: nothing is ever rounded, however many digits it has."""
+    sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int) or sign:
+        raise ValueError(f"{what} '{shown}' must be a non-negative number")
+    n = int("".join(map(str, digits)) or "0")
+    shift = exponent + places
+    if shift >= 0:
+        factor: int = 10**shift
+        return n * factor
+    divisor: int = 10**-shift
+    if n % divisor:
+        raise ValueError(f"{what} '{shown}' has too many decimal places")
+    return n // divisor
+
+
 def parse_pence(s: str | None, what: str = "cost") -> int | None:
     """'£12.50', '12.5' or '12' to pence, exactly."""
     text = clean(s)
     if text is None:
         return None
-    value = parse_decimal(text.lstrip("£$€"), what)
+    amount = text.lstrip("£$€").strip()
+    if not amount:
+        raise ValueError(f"{what} '{text}' has no amount")
+    value = parse_decimal(amount, what)
     assert value is not None
-    pence = value * 100
-    if pence != pence.to_integral_value() or pence < 0:
-        raise ValueError(f"{what} '{text}' is not a sum of money")
-    return int(pence)
+    return scale_exact(value, 2, what, text)
+
+
+def parse_whole_pence(s: str | None, what: str = "cost") -> int | None:
+    """A cell that is already in pence ('Cost pence' column): a non-negative whole number."""
+    value = parse_int(s, what)
+    if value is not None and value < 0:
+        raise ValueError(f"{what} '{s}' cannot be negative")
+    return value
 
 
 def parse_length_mm(s: str | None, unit: str, what: str) -> int | None:
@@ -187,10 +213,7 @@ def parse_length_mm(s: str | None, unit: str, what: str) -> int | None:
     value = parse_decimal(s, what)
     if value is None:
         return None
-    mm = value * (1000 if unit == "m" else 1)
-    if mm != mm.to_integral_value() or mm < 0:
-        raise ValueError(f"{what} '{s}' is not a length in whole millimetres")
-    return int(mm)
+    return scale_exact(value, 3 if unit == "m" else 0, what, str(s).strip())
 
 
 FILM_TYPES = {
@@ -238,8 +261,23 @@ def key(header: str) -> str:
 
 
 def read_rows(path: Path) -> list[list[str]]:
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        return [[c for c in row] for row in csv.reader(f)]
+    """All rows of a CSV file. An unreadable file, bad encoding or an unclosed quote (which would
+    otherwise swallow the records after it) becomes a ParseError for that file."""
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as f:
+            return [list(row) for row in csv.reader(f, strict=True)]
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise ParseError(path, [f"could not read the file: {exc}"]) from exc
+
+
+def attempt[T](errors: list[str], fn: Callable[..., T], *args: object) -> T | None:
+    """Run a cell parser; on ValueError record the message and give None, so a row can report
+    every bad field at once."""
+    try:
+        return fn(*args)
+    except ValueError as exc:
+        errors.append(str(exc))
+        return None
 
 
 def is_blank(row: list[str]) -> bool:
@@ -328,54 +366,57 @@ def parse_tracker(path: Path) -> list[RollRow]:
         key_cells = [t.cell(row, c[n]) for n in ("date", "camera", "film")]
         if not any(key_cells):
             continue  # a pre-filled formula row with nothing logged
-        try:
-            dev_date = parse_date(t.cell(row, c["date"]))
-            if dev_date is None:
-                raise ValueError("no development date")
-            camera = t.cell(row, c["camera"])
-            film = t.cell(row, c["film"])
-            fmt = t.cell(row, c["format"])
-            developer = t.cell(row, c["developer"])
-            ei = parse_decimal(t.cell(row, c["ei"]), "EI")
-            for label, value in (
-                ("camera", camera),
-                ("film", film),
-                ("format", fmt),
-                ("developer", developer),
-                ("EI", ei),
-            ):
-                if value is None:
-                    raise ValueError(f"no {label}")
-            assert camera and film and fmt and developer and ei is not None
-            if not (0 < ei < 10_000_000 and ei == round(ei, 2)):
-                raise ValueError(f"EI '{ei}' must be positive with at most 2 decimals")
-            minutes = parse_decimal(t.cell(row, dev_time), "development time")
-            if minutes is not None and not (0 < minutes < 1000):
-                raise ValueError(
-                    f"development time '{minutes}' must be a positive number of minutes"
-                )
-            src = (t.cell(row, source) or "factory").lower()
-            if src not in ("factory", "bulk"):
-                raise ValueError(f"source '{src}' is not factory or bulk")
-            rows.append(
-                RollRow(
-                    line=line,
-                    dev_date=dev_date,
-                    camera=camera,
-                    lens=parse_lens(t.cell(row, lens)),
-                    format=parse_format(fmt),
-                    film=film,
-                    ei=ei,
-                    developer=developer,
-                    dev_time_min=minutes,
-                    filter=_none_if_na(t.cell(row, filt)),
-                    subject=t.cell(row, subject),
-                    notes=t.cell(row, notes),
-                    source=src,
-                )
+        errors: list[str] = []
+        dev_date = attempt(errors, parse_date, t.cell(row, c["date"]))
+        if dev_date is None and not errors:
+            errors.append("no development date")
+        camera = t.cell(row, c["camera"])
+        film = t.cell(row, c["film"])
+        fmt = t.cell(row, c["format"])
+        developer = t.cell(row, c["developer"])
+        for label, value in (
+            ("camera", camera),
+            ("film", film),
+            ("format", fmt),
+            ("developer", developer),
+        ):
+            if value is None:
+                errors.append(f"no {label}")
+        ei = attempt(errors, parse_decimal, t.cell(row, c["ei"]), "EI")
+        if ei is None:
+            if not any(e.startswith("EI ") for e in errors):
+                errors.append("no EI")
+        elif not (ei > 0 and ei < 10_000_000 and ei == round(ei, 2)):
+            errors.append(f"EI '{ei}' must be positive with at most 2 decimals")
+        minutes = attempt(errors, parse_decimal, t.cell(row, dev_time), "development time")
+        if minutes is not None and not (0 < minutes < 1000 and minutes == round(minutes, 2)):
+            errors.append(
+                f"development time '{minutes}' must be positive minutes, at most 2 decimals"
             )
-        except ValueError as exc:
-            problems.append(f"line {line}: {exc}")
+        src = (t.cell(row, source) or "factory").lower()
+        if src not in ("factory", "bulk"):
+            errors.append(f"source '{src}' is not factory or bulk")
+        if errors:
+            problems.append(f"line {line}: " + "; ".join(errors))
+            continue
+        assert dev_date and camera and film and fmt and developer and ei is not None
+        rows.append(
+            RollRow(
+                line=line,
+                dev_date=dev_date,
+                camera=camera,
+                lens=parse_lens(t.cell(row, lens)),
+                format=parse_format(fmt),
+                film=film,
+                ei=ei,
+                developer=developer,
+                dev_time_min=minutes,
+                filter=_none_if_na(t.cell(row, filt)),
+                subject=t.cell(row, subject),
+                notes=t.cell(row, notes),
+                source=src,
+            )
+        )
     if problems:
         raise ParseError(path, problems)
     return rows
@@ -394,16 +435,24 @@ FILMS_REQUIRED = {
 }
 
 
+def _opening_columns(t: Table) -> list[tuple[int, str]]:
+    """Every 'Opening <format>' column as (index, normalised format). Any format name counts,
+    not just numbers, so 'Opening 4x5' is read (and reported as unknown by the loader) rather
+    than silently dropped. An 'Opening date' column is not a count."""
+    columns: list[tuple[int, str]] = []
+    for i, header in enumerate(t.header):
+        m = re.fullmatch(r"\s*opening\s*(.+?)\s*", header, flags=re.IGNORECASE)
+        if m and key(m.group(1)) not in ("date", "on", "stockdate"):
+            columns.append((i, parse_format(m.group(1))))
+    return columns
+
+
 def parse_films(path: Path) -> tuple[list[FilmRow], list[OpeningRow]]:
     """Films, and an opening-stock row for each 'Opening <format>' column with a count above
     zero (zero and blank counts are skipped: decision 13)."""
     t = find_table(path, FILMS_REQUIRED)
     c = {name: require(t, name, *aliases) for name, aliases in FILMS_REQUIRED.items()}
-    opening_cols = [
-        (i, parse_format(m.group(1)))
-        for i, k in enumerate(t.keys)
-        if (m := re.fullmatch(r"opening(\d+)(?:mm)?", k))
-    ]
+    opening_cols = _opening_columns(t)
     problems: list[str] = []
     films: list[FilmRow] = []
     openings: list[OpeningRow] = []
@@ -411,6 +460,9 @@ def parse_films(path: Path) -> tuple[list[FilmRow], list[OpeningRow]]:
     for line, row in t.body:
         name = t.cell(row, c["name"])
         if name is None:
+            data_cols = [c["type"], c["box_iso"], *(i for i, _ in opening_cols)]
+            if any(t.cell(row, i) for i in data_cols):
+                problems.append(f"line {line}: a film row has details but no name")
             continue
         try:
             type_text = t.cell(row, c["type"])
@@ -448,14 +500,12 @@ LIST_COLUMNS = {
 def parse_lists(path: Path) -> ListsData:
     """One column per list, names running down it. Repeats are dropped (case-insensitively)."""
     rows = read_rows(path)
-    header_index = next(
-        (
-            i
-            for i, r in enumerate(rows)
-            if sum(any(key(c) in al for al in LIST_COLUMNS.values()) for c in r) >= 3
-        ),
-        None,
-    )
+
+    def lists_named(row: list[str]) -> int:
+        """How many different lists this row has a header for (repeats count once)."""
+        return sum(any(key(cell) in al for cell in row) for al in LIST_COLUMNS.values())
+
+    header_index = next((i for i, r in enumerate(rows) if lists_named(r) >= 3), None)
     if header_index is None:
         seen = next((r for r in rows if not is_blank(r)), [])
         raise ParseError(
@@ -490,12 +540,12 @@ BULK_REQUIRED = {
 }
 
 
-def _unit(header: str) -> str:
-    """Lengths are millimetres unless the header says metres ('Length (m)')."""
-    h = header.lower()
-    if "mm" in h:
-        return "mm"
-    if re.search(r"\(\s*m\s*\)|metre|meter|\bm\b", h):
+def _unit(header_key: str) -> str:
+    """Lengths are millimetres unless the normalised header says metres ('lengthm',
+    'lengthmetres'). Centimetres and kilometres are refused rather than guessed."""
+    if header_key.endswith(("cm", "km")):
+        raise ValueError(f"column '{header_key}' is not in mm or m")
+    if header_key.endswith(("metres", "meters")) or re.search(r"(?<!m)m$", header_key):
         return "m"
     return "mm"
 
@@ -504,42 +554,54 @@ def parse_bulk(path: Path) -> list[BulkRow]:
     t = find_table(path, BULK_REQUIRED)
     c = {name: require(t, name, *aliases) for name, aliases in BULK_REQUIRED.items()}
     used = t.column_starting("usedbefore")
-    bought = t.column("date", "bought", "boughton", "purchased", "dateboughtbought")
+    bought = t.column("date", "bought", "boughton", "purchased", "datebought")
     cost = t.column("cost", "price", "costpence", "totalcost")
     supplier = t.column("supplier", "shop", "from")
     notes = t.column("notes")
-    length_unit = _unit(t.header[c["length"]])
-    used_unit = _unit(t.header[used]) if used is not None else "mm"
+    try:
+        length_unit = _unit(t.keys[c["length"]])
+        used_unit = _unit(t.keys[used]) if used is not None else "mm"
+    except ValueError as exc:
+        raise ParseError(path, [str(exc)]) from exc
+    cost_in_pence = cost is not None and t.keys[cost].endswith("pence")
     problems: list[str] = []
     rows: list[BulkRow] = []
+    data_columns = [i for i in (*c.values(), used, bought, cost, supplier, notes) if i is not None]
 
     for line, row in t.body:
         label = t.cell(row, c["label"])
         if label is None:
+            if any(t.cell(row, i) for i in data_columns):
+                problems.append(f"line {line}: a bulk roll has details but no label")
             continue
-        try:
-            film = t.cell(row, c["film"])
-            if film is None:
-                raise ValueError(f"bulk roll '{label}' has no film")
-            length = parse_length_mm(t.cell(row, c["length"]), length_unit, "length")
-            if length is None or length <= 0:
-                raise ValueError(f"bulk roll '{label}' needs a positive length")
-            rows.append(
-                BulkRow(
-                    line=line,
-                    label=label,
-                    film=film,
-                    length_mm=length,
-                    used_before_mm=parse_length_mm(t.cell(row, used), used_unit, "used before")
-                    or 0,
-                    bought_on=parse_date(t.cell(row, bought)),
-                    cost_pence=parse_pence(t.cell(row, cost)),
-                    supplier=t.cell(row, supplier),
-                    notes=t.cell(row, notes),
-                )
+        errors: list[str] = []
+        film = t.cell(row, c["film"])
+        if film is None:
+            errors.append(f"bulk roll '{label}' has no film")
+        length = attempt(errors, parse_length_mm, t.cell(row, c["length"]), length_unit, "length")
+        if (length is None or length <= 0) and not any(e.startswith("length") for e in errors):
+            errors.append(f"bulk roll '{label}' needs a positive length")
+        used_mm = attempt(errors, parse_length_mm, t.cell(row, used), used_unit, "used before")
+        bought_on = attempt(errors, parse_date, t.cell(row, bought))
+        cost_text = t.cell(row, cost)
+        pence = attempt(errors, parse_whole_pence if cost_in_pence else parse_pence, cost_text)
+        if errors:
+            problems.append(f"line {line}: " + "; ".join(errors))
+            continue
+        assert film is not None and length is not None
+        rows.append(
+            BulkRow(
+                line=line,
+                label=label,
+                film=film,
+                length_mm=length,
+                used_before_mm=used_mm or 0,
+                bought_on=bought_on,
+                cost_pence=pence,
+                supplier=t.cell(row, supplier),
+                notes=t.cell(row, notes),
             )
-        except ValueError as exc:
-            problems.append(f"line {line}: {exc}")
+        )
     if problems:
         raise ParseError(path, problems)
     return rows
@@ -567,9 +629,13 @@ def parse_purchases(path: Path) -> list[PurchaseRow]:
     problems: list[str] = []
     rows: list[PurchaseRow] = []
 
+    recognised = [
+        i for i in (*c.values(), film, fmt, cost, supplier, bulk, exposures, notes) if i is not None
+    ]
+
     for line, row in t.body:
-        if t.cell(row, c["date"]) is None and t.cell(row, c["rolls"]) is None:
-            continue
+        if not any(t.cell(row, i) for i in recognised):
+            continue  # nothing filled in on this row
         try:
             occurred = parse_date(t.cell(row, c["date"]))
             if occurred is None:
@@ -593,6 +659,9 @@ def parse_purchases(path: Path) -> list[PurchaseRow]:
             pence = parse_pence(t.cell(row, cost))
             if kind == "purchase" and pence is None:
                 raise ValueError("a purchase needs a cost")
+            per_cassette = parse_int(t.cell(row, exposures), "exposures")
+            if kind == "bulk_load" and (per_cassette is None or per_cassette <= 0):
+                raise ValueError("a bulk load needs a positive number of exposures per cassette")
             rows.append(
                 PurchaseRow(
                     line=line,
@@ -604,7 +673,7 @@ def parse_purchases(path: Path) -> list[PurchaseRow]:
                     cost_pence=pence if kind == "purchase" else None,
                     supplier=t.cell(row, supplier) if kind == "purchase" else None,
                     bulk_label=bulk_label,
-                    exposures_per_cassette=parse_int(t.cell(row, exposures), "exposures"),
+                    exposures_per_cassette=per_cassette,
                     notes=t.cell(row, notes),
                 )
             )
@@ -627,8 +696,8 @@ DEV_TIMES_REQUIRED = {
 
 def parse_dev_time_refs(path: Path) -> list[DevTimeRef]:
     """Only the hand-typed reference block. The sheet also derives a table of logged times from
-    the Tracker; that is skipped: the block ends at the first blank row or a row starting with
-    'Logged', and the header is taken from the first matching row."""
+    the Tracker; that is skipped. The block ends at the first blank row, or a row whose only
+    entry starts with 'Logged'; the header is the first row with the required columns."""
     t = find_table(path, DEV_TIMES_REQUIRED)
     c = {name: require(t, name, *aliases) for name, aliases in DEV_TIMES_REQUIRED.items()}
     notes = t.column("notes", "comments")
@@ -638,8 +707,9 @@ def parse_dev_time_refs(path: Path) -> list[DevTimeRef]:
     all_rows = read_rows(path)
     start = t.header_index
     for offset, row in enumerate(all_rows[start + 1 :], start=start + 2):
-        if is_blank(row) or (row and row[0].strip().lower().startswith("logged")):
-            break  # end of the reference block
+        filled = [cell.strip() for cell in row if cell.strip()]
+        if not filled or (len(filled) == 1 and filled[0].lower().startswith("logged")):
+            break  # a blank row, or a lone "Logged ..." heading, ends the reference block
         try:
             film = t.cell(row, c["film"])
             developer = t.cell(row, c["developer"])

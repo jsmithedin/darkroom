@@ -398,3 +398,191 @@ def test_dev_time_refs_problems(tmp_path: Path) -> None:
     with pytest.raises(ParseError) as err:
         parse_dev_time_refs(path)
     assert len(err.value.problems) == 3
+
+
+# --- review follow-ups -----------------------------------------------------------------
+
+
+def test_currency_symbol_alone_is_a_problem_not_a_crash(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="no amount"):
+        parse_pence("£")
+    path = write(tmp_path, "Bulk,Film,Length,Cost\nA,F,100,£\nB,F,100,£5\n")
+    with pytest.raises(ParseError) as err:
+        parse_bulk(path)
+    assert len(err.value.problems) == 1  # row B is fine; row A is reported, not a crash
+
+
+@pytest.mark.parametrize("text", ["12.50000000000000000000000000001", "0.001", "12.505"])
+def test_money_is_never_rounded_into_validity(text: str) -> None:
+    with pytest.raises(ValueError):
+        parse_pence(text)
+
+
+def test_lengths_are_never_rounded_into_validity() -> None:
+    with pytest.raises(ValueError):
+        parse_length_mm("17.00000000000000000000000000001", "m", "length")
+    assert parse_length_mm("17.000", "m", "length") == 17000
+    with pytest.raises(ValueError):
+        parse_length_mm("12.5", "mm", "length")
+
+
+def test_pence_trailing_zeros_are_fine() -> None:
+    assert parse_pence("12.5000") == 1250
+    assert parse_pence("£1,200.00") == 120000
+
+
+def test_one_unreadable_file_does_not_hide_the_others(tmp_path: Path) -> None:
+    from app.importer.parse import parse_all
+
+    (tmp_path / "Films.csv").mkdir()  # a directory where a file should be
+    with pytest.raises(ParseError) as err:
+        parse_all(tmp_path)
+    text = "\n".join(err.value.problems)
+    assert "Tracker.csv: file not found" in text
+    assert "Films.csv: could not read the file" in text
+    assert "Lists.csv: file not found" in text  # later files are still checked
+
+
+def test_unclosed_quote_is_reported_not_swallowed(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Dev date,Camera,Format,Film,EI,Developer,Notes\n"
+        '01/01/2026,A,120,F,100,D,"never closed\n'
+        "02/01/2026,A,120,F,100,D,fine\n",
+    )
+    with pytest.raises(ParseError) as err:
+        parse_tracker(path)
+    assert "could not read the file" in err.value.problems[0]
+
+
+def test_multiline_quoted_notes_are_fine(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Dev date,Camera,Format,Film,EI,Developer,Notes\n"
+        '01/01/2026,A,120,F,100,D,"line one\nline two"\n',
+    )
+    (row,) = parse_tracker(path)
+    assert row.notes == "line one\nline two"
+
+
+def test_tracker_reports_all_bad_fields_in_one_row(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Dev date,Camera,Format,Film,EI,Developer,Dev time\n32/01/2026,,120,F,fast,D,9.555\n",
+    )
+    with pytest.raises(ParseError) as err:
+        parse_tracker(path)
+    (problem,) = err.value.problems
+    for expected in ("real date", "no camera", "EI", "development time"):
+        assert expected in problem
+
+
+def test_opening_column_for_any_format_is_read(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Film,Type,Box ISO,Opening 35mm,Opening 4x5,Opening date\nA,bw,100,0,3,22/11/2026\n",
+    )
+    _, openings = parse_films(path)
+    assert [(o.format, o.rolls) for o in openings] == [("4x5", 3)]  # 'Opening date' is not a count
+
+
+def test_film_row_with_details_but_no_name_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, "Film,Type,Box ISO,Opening 35mm\n,bw,400,3\n,,,\nReal,bw,100,\n")
+    with pytest.raises(ParseError) as err:
+        parse_films(path)
+    assert len(err.value.problems) == 1
+    assert "line 2" in err.value.problems[0]
+
+
+def test_lists_header_needs_three_different_lists(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Camera,Cameras,Camera\nnot,a,header\nCameras,Lenses,Formats\nNikon,50mm,120\n",
+    )
+    data = parse_lists(path)
+    assert (data.cameras, data.lenses, data.formats) == (["Nikon"], ["50mm"], ["120"])
+
+
+@pytest.mark.parametrize(
+    ("header", "value", "expected_mm"),
+    [
+        ("Length", "17000", 17000),
+        ("LengthM", "17", 17000),
+        ("Length (m)", "17", 17000),
+        ("Length (metres)", "17", 17000),
+        ("Length (mm)", "17000", 17000),
+        ("LengthMM", "17000", 17000),
+    ],
+)
+def test_bulk_unit_comes_from_the_header_however_it_is_spelt(
+    tmp_path: Path, header: str, value: str, expected_mm: int
+) -> None:
+    (row,) = parse_bulk(write(tmp_path, f"Bulk,Film,{header}\nA,F,{value}\n"))
+    assert row.length_mm == expected_mm
+
+
+def test_bulk_length_in_centimetres_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ParseError):
+        parse_bulk(write(tmp_path, "Bulk,Film,Length (cm)\nA,F,1700\n"))
+
+
+def test_bulk_row_with_details_but_no_label_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, "Bulk,Film,Length\n,Fomapan,17000\n,,\nOK,Fomapan,17000\n")
+    with pytest.raises(ParseError) as err:
+        parse_bulk(path)
+    assert len(err.value.problems) == 1
+    assert "no label" in err.value.problems[0]
+
+
+def test_bulk_cost_pence_column_is_pence_not_pounds(tmp_path: Path) -> None:
+    (row,) = parse_bulk(write(tmp_path, "Bulk,Film,Length,Cost pence\nA,F,100,3000\n"))
+    assert row.cost_pence == 3000
+    (pounds,) = parse_bulk(write(tmp_path, "Bulk,Film,Length,Cost\nA,F,100,30\n", "b.csv"))
+    assert pounds.cost_pence == 3000
+    (blank,) = parse_bulk(write(tmp_path, "Bulk,Film,Length,Cost pence\nA,F,100,\n", "c.csv"))
+    assert blank.cost_pence is None
+    with pytest.raises(ParseError):
+        parse_bulk(write(tmp_path, "Bulk,Film,Length,Cost pence\nA,F,100,30.5\n", "d.csv"))
+
+
+def test_purchase_row_with_data_but_no_date_or_rolls_is_reported(tmp_path: Path) -> None:
+    path = write(tmp_path, "Date,Film,Format,Rolls,Cost\n,Tri-X,35,,£25\n,,,,\n")
+    with pytest.raises(ParseError) as err:
+        parse_purchases(path)
+    assert len(err.value.problems) == 1
+
+
+def test_bulk_load_needs_exposures(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Date,Rolls,Bulk roll,Exposures\n"
+        "01/01/2026,2,Bulk 1,\n"
+        "01/01/2026,2,Bulk 1,0\n"
+        "01/01/2026,2,Bulk 1,36\n",
+    )
+    with pytest.raises(ParseError) as err:
+        parse_purchases(path)
+    assert len(err.value.problems) == 2
+    assert "exposures per cassette" in err.value.problems[0]
+
+
+def test_a_reference_note_starting_with_logged_does_not_end_the_block(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Notes,Film,EI,Developer,Minutes\n"
+        "Logged after test strip,Tri-X,400,HC-110,6\n"
+        ",HP5,400,HC-110,7\n"
+        ",,,,\n"
+        "Logged times,,,,\n"
+        ",Tri-X,400,HC-110,99\n",
+    )
+    refs = parse_dev_time_refs(path)
+    assert [(r.film, r.minutes) for r in refs] == [("Tri-X", Decimal("6")), ("HP5", Decimal("7"))]
+
+
+def test_a_lone_logged_heading_ends_the_block_without_a_blank_row(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Film,EI,Developer,Minutes\nTri-X,400,HC-110,6\nLogged times,,,\nTri-X,400,HC-110,99\n",
+    )
+    assert [r.minutes for r in parse_dev_time_refs(path)] == [Decimal("6")]
