@@ -1,52 +1,16 @@
 from calendar import monthrange
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel
-from sqlalchemy import extract, func, literal, select, union_all
+from sqlalchemy import ColumnElement, ScalarSelect, extract, func, literal, select, union_all
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from app.models import BulkRoll, Camera, Developer, Film, Format, Roll, StockMovement
-
-
-class MonthPoint(BaseModel):
-    month: int
-    count: int
-    cumulative: int | None
-
-
-class YtdCompare(BaseModel):
-    this_year: int
-    last_year_to_date: int
-
-
-class BreakdownRow(BaseModel):
-    id: UUID | None = None
-    name: str
-    count: int
-
-
-class Stats(BaseModel):
-    year: int
-    monthly: list[MonthPoint]
-    previous_monthly: list[MonthPoint]
-    ytd: YtdCompare
-    breakdowns: dict[str, list[BreakdownRow]]
-
-
-class CameraIdle(BaseModel):
-    camera_id: UUID
-    last_used: date
-
-
-class SpendYear(BaseModel):
-    year: int
-    purchases_pence: int
-    bulk_pence: int
-    rolls: int
-    cost_per_roll_pence: int | None
+from app.schemas.stats import BreakdownRow, CameraIdle, MonthPoint, SpendYear, Stats, YtdCompare
 
 
 def london_today(now_utc: datetime, tz: str) -> date:
@@ -70,24 +34,27 @@ def _month_points(counts: dict[int, int], year: int, today: date) -> list[MonthP
     return points
 
 
-async def _breakdown(
-    db: AsyncSession,
+def _breakdown(
     start: date,
     end: date,
     name: InstrumentedAttribute[str],
     ref_id: InstrumentedAttribute[UUID] | None = None,
-) -> list[BreakdownRow]:
-    count = func.count()
+) -> ScalarSelect[Any]:
     identity = [ref_id] if ref_id is not None else []
-    query = select(name, count, ref_id if ref_id is not None else literal(None)).select_from(Roll)
+    item_id = ref_id if ref_id is not None else literal(None)
+    query = select(name.label("name"), func.count().label("count"), item_id.label("id"))
+    query = query.select_from(Roll)
     if name.class_ is not Roll:
         query = query.join(name.class_)
-    rows = await db.execute(
-        query.where(Roll.dev_date.between(start, end))
-        .group_by(name, *identity)
-        .order_by(count.desc(), name, *identity)
+    rows = query.where(Roll.dev_date.between(start, end)).group_by(name, *identity).subquery()
+    ordered_rows = aggregate_order_by(
+        rows.table_valued(), rows.c.count.desc(), rows.c.name, rows.c.id
     )
-    return [BreakdownRow(name=label, count=n, id=item_id) for label, n, item_id in rows]
+    return select(func.jsonb_agg(ordered_rows, type_=JSONB)).scalar_subquery()
+
+
+def _roll_count(start: date, end: date) -> ScalarSelect[int]:
+    return select(func.count()).where(Roll.dev_date.between(start, end)).scalar_subquery()
 
 
 async def get_stats(db: AsyncSession, year: int, today: date) -> Stats:
@@ -96,42 +63,52 @@ async def get_stats(db: AsyncSession, year: int, today: date) -> Stats:
     previous_start = date(year - 1, 1, 1)
     month = extract("month", Roll.dev_date)
     roll_year = extract("year", Roll.dev_date)
-    counts: dict[int, dict[int, int]] = {year - 1: {}, year: {}}
-    rows = await db.execute(
-        select(roll_year, month, func.count())
+    monthly = (
+        select(roll_year.label("year"), month.label("month"), func.count().label("count"))
         .where(Roll.dev_date.between(previous_start, end))
         .group_by(roll_year, month)
+        .subquery()
     )
-    for y, m, count in rows:
-        counts[int(y)][int(m)] = count
-
-    ytd = YtdCompare(this_year=0, last_year_to_date=0)
+    this_ytd: ColumnElement[int] = literal(0)
+    previous_ytd: ColumnElement[int] = literal(0)
     if year <= today.year:
         current_end = today if year == today.year else end
         m, day = current_end.month, current_end.day
         previous_end = date(year - 1, m, min(day, monthrange(year - 1, m)[1]))
-        this_year, previous = (
-            await db.execute(
-                select(
-                    func.count().filter(Roll.dev_date.between(start, current_end)),
-                    func.count().filter(Roll.dev_date.between(previous_start, previous_end)),
-                ).where(Roll.dev_date.between(previous_start, current_end))
-            )
-        ).one()
-        ytd = YtdCompare(this_year=this_year, last_year_to_date=previous)
+        this_ytd = _roll_count(start, current_end)
+        previous_ytd = _roll_count(previous_start, previous_end)
 
+    breakdowns = {
+        "camera": _breakdown(start, end, Camera.name, Camera.id),
+        "film": _breakdown(start, end, Film.name, Film.id),
+        "developer": _breakdown(start, end, Developer.name, Developer.id),
+        "format": _breakdown(start, end, Format.name, Format.id),
+        "type": _breakdown(start, end, Film.type),
+        "source": _breakdown(start, end, Roll.source),
+    }
+    # A single statement gives every aggregate the same PostgreSQL snapshot.
+    result = (
+        await db.execute(
+            select(
+                select(func.jsonb_agg(monthly.table_valued(), type_=JSONB)).scalar_subquery(),
+                this_ytd,
+                previous_ytd,
+                *breakdowns.values(),
+            )
+        )
+    ).one()
+    monthly_rows, this_year, last_year_to_date, *breakdown_rows = result
+    counts: dict[int, dict[int, int]] = {year - 1: {}, year: {}}
+    for row in monthly_rows or []:
+        counts[row["year"]][row["month"]] = row["count"]
     return Stats(
         year=year,
         monthly=_month_points(counts[year], year, today),
         previous_monthly=_month_points(counts[year - 1], year - 1, today),
-        ytd=ytd,
+        ytd=YtdCompare(this_year=this_year, last_year_to_date=last_year_to_date),
         breakdowns={
-            "camera": await _breakdown(db, start, end, Camera.name, Camera.id),
-            "film": await _breakdown(db, start, end, Film.name, Film.id),
-            "developer": await _breakdown(db, start, end, Developer.name, Developer.id),
-            "format": await _breakdown(db, start, end, Format.name, Format.id),
-            "type": await _breakdown(db, start, end, Film.type),
-            "source": await _breakdown(db, start, end, Roll.source),
+            kind: [BreakdownRow.model_validate(row) for row in rows or []]
+            for kind, rows in zip(breakdowns, breakdown_rows, strict=True)
         },
     )
 
@@ -139,11 +116,15 @@ async def get_stats(db: AsyncSession, year: int, today: date) -> Stats:
 async def camera_idle(db: AsyncSession) -> list[CameraIdle]:
     last_used = func.max(Roll.dev_date)
     rows = await db.execute(
-        select(Roll.camera_id, last_used)
-        .group_by(Roll.camera_id)
-        .order_by(last_used, Roll.camera_id)
+        select(Camera.id, Camera.name, last_used)
+        .outerjoin(Roll, Roll.camera_id == Camera.id)
+        .where(Camera.archived_at.is_(None))
+        .group_by(Camera.id)
+        .order_by(last_used.asc().nulls_first(), Camera.name, Camera.id)
     )
-    return [CameraIdle(camera_id=camera_id, last_used=day) for camera_id, day in rows]
+    return [
+        CameraIdle(camera_id=camera_id, name=name, last_used=day) for camera_id, name, day in rows
+    ]
 
 
 async def spend(db: AsyncSession) -> list[SpendYear]:

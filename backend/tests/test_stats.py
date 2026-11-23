@@ -1,9 +1,11 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, tzinfo
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import ORMExecuteState
 
 from app.services.stats import camera_idle, get_stats, london_today
 from tests.support import roll_body
@@ -45,6 +47,27 @@ async def test_ytd_compares_to_same_date_last_year(
     assert historical.ytd.model_dump() == {"this_year": 2, "last_year_to_date": 2}
 
 
+async def test_future_year_has_no_cumulative_points(db_session: AsyncSession) -> None:
+    stats = await get_stats(db_session, 2027, date(2026, 7, 2))
+    assert [point.cumulative for point in stats.monthly] == [None] * 12
+    assert stats.ytd.model_dump() == {"this_year": 0, "last_year_to_date": 0}
+
+
+async def test_stats_aggregates_use_one_statement(db_session: AsyncSession) -> None:
+    statements = 0
+
+    def count_statement(_: ORMExecuteState) -> None:
+        nonlocal statements
+        statements += 1
+
+    event.listen(db_session.sync_session, "do_orm_execute", count_statement)
+    try:
+        await get_stats(db_session, 2026, date(2026, 7, 2))
+    finally:
+        event.remove(db_session.sync_session, "do_orm_execute", count_statement)
+    assert statements == 1
+
+
 async def test_breakdowns_sum_to_total(authed: AsyncClient, gear: dict[str, str]) -> None:
     await add_roll(authed, gear, "2025-01-01")
     await add_roll(authed, gear, "2025-02-01", film_id=gear["film2"], source="bulk")
@@ -68,10 +91,18 @@ async def test_camera_idle_oldest_first(
     await add_roll(authed, gear, "2024-03-01")
     await add_roll(authed, gear, "2025-04-01")
     await add_roll(authed, gear, "2024-09-01", camera_id=gear["camera2"])
+    unused = await authed.post("/api/cameras", json={"name": "Unused"})
+    archived = await authed.post("/api/cameras", json={"name": "Archived"})
+    assert unused.status_code == archived.status_code == 201
+    archived_id = archived.json()["id"]
+    await add_roll(authed, gear, "2023-01-01", camera_id=archived_id)
+    response = await authed.post(f"/api/cameras/{archived_id}/archive")
+    assert response.status_code == 200, response.text
     result = await camera_idle(db_session)
-    assert [(row.camera_id, row.last_used) for row in result] == [
-        (UUID(gear["camera2"]), date(2024, 9, 1)),
-        (UUID(gear["camera"]), date(2025, 4, 1)),
+    assert [(row.camera_id, row.name, row.last_used) for row in result] == [
+        (UUID(unused.json()["id"]), "Unused", None),
+        (UUID(gear["camera2"]), "Olympus XA", date(2024, 9, 1)),
+        (UUID(gear["camera"]), "Nikon FM2", date(2025, 4, 1)),
     ]
 
 
@@ -135,6 +166,11 @@ async def test_stats_require_sign_in(client: AsyncClient) -> None:
         assert (await client.get(path)).status_code == 401
 
 
+@pytest.mark.parametrize(("year", "status"), [(1899, 422), (1900, 200), (2200, 200), (2201, 422)])
+async def test_stats_year_range(authed: AsyncClient, year: int, status: int) -> None:
+    assert (await authed.get("/api/stats", params={"year": year})).status_code == status
+
+
 async def test_default_year_uses_configured_timezone(
     authed: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -142,8 +178,8 @@ async def test_default_year_uses_configured_timezone(
 
     class FixedClock(datetime):
         @classmethod
-        def now(cls, tz=None):
-            return datetime(2025, 12, 31, 23, 30, tzinfo=UTC)
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return datetime(2025, 12, 31, 23, 30, tzinfo=UTC).astimezone(tz)
 
     monkeypatch.setattr(stats, "datetime", FixedClock)
     response = await authed.patch("/api/settings", json={"timezone": "Europe/Paris"})
