@@ -174,6 +174,50 @@ export function useCreateMovement() {
   });
 }
 
+export interface StocktakeCount {
+  film_id: string;
+  format_id: string;
+  counted: number;
+  /** The recorded balance the user reviewed; the server refuses if it has since changed. */
+  expected: number;
+}
+
+export interface StocktakeBody {
+  batch_id: string;
+  occurred_on: string;
+  counts: StocktakeCount[];
+}
+
+export interface ChangedRow {
+  film_id: string;
+  format_id: string;
+  film: string;
+  format: string;
+  expected: number;
+  current: number;
+}
+
+/** Rows whose stock moved since review, from a 409 `stock_changed`; null for any other error. */
+export function changedRows(error: unknown): ChangedRow[] | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const body = error.body as { code?: string; rows?: ChangedRow[] } | null;
+  return body?.code === "stock_changed" && body.rows ? body.rows : null;
+}
+
+export function useStocktake() {
+  const invalidate = useInvalidateStock();
+  return useMutation({
+    mutationFn: (body: StocktakeBody) =>
+      apiFetch<{ replayed: boolean; adjustments: Movement[] }>("/api/stocktakes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: invalidate,
+    // A refused stocktake usually means stock moved: refetch so the next review starts from it.
+    onError: invalidate,
+  });
+}
+
 export function useCreateAdjustment() {
   const invalidate = useInvalidateStock();
   return useMutation({

@@ -12,6 +12,7 @@ import {
 import { BulkMeter } from "../components/BulkMeter";
 import { ErrorNote } from "../components/ErrorNote";
 import { RefSelect } from "../components/RefSelect";
+import { Stocktake } from "../components/Stocktake";
 import { todayLocal } from "../components/RollForm";
 
 const TYPE_ORDER: FilmType[] = ["bw", "colour", "slide"];
@@ -120,6 +121,7 @@ export function Stock() {
 
   // ?recount=film:format opens the recount form (the link on a refused write)
   const fromLink = params.get("recount")?.split(":");
+  const [counting, setCounting] = useState(false);
   const [target, setTarget] = useState<Target | null>(
     fromLink && fromLink.length === 2 ? { film_id: fromLink[0], format_id: fromLink[1] } : null,
   );
@@ -177,17 +179,23 @@ export function Stock() {
           />
           Show empty
         </label>
-        {!target && (
-          <button
-            type="button"
-            className="button"
-            onClick={() => setTarget({ film_id: "", format_id: "" })}
-          >
-            Recount…
-          </button>
+        {!target && !counting && (
+          <div className="row">
+            <button type="button" className="button" onClick={() => setCounting(true)}>
+              Stocktake…
+            </button>
+            <button
+              type="button"
+              className="button"
+              onClick={() => setTarget({ film_id: "", format_id: "" })}
+            >
+              Recount…
+            </button>
+          </div>
         )}
       </div>
 
+      {counting && <Stocktake onDone={() => setCounting(false)} />}
       {target && <RecountForm key={`${target.film_id}:${target.format_id}`} initial={target} onDone={closeRecount} />}
 
       {stock.isPending && <p>Loading…</p>}

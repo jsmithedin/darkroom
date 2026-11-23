@@ -18,6 +18,7 @@ from app.schemas.stock import (
     MovementUpdate,
     OpeningIn,
     PurchaseIn,
+    StocktakeIn,
 )
 from app.services.settings import get_settings
 from app.services.units import cassette_mm
@@ -275,6 +276,101 @@ async def record_adjustment(
             updated_by=actor.user_id,
         ),
     )
+
+
+@dataclass(frozen=True)
+class StaleCount:
+    film_id: uuid.UUID
+    format_id: uuid.UUID
+    film_name: str
+    format_name: str
+    expected: int
+    current: int
+
+
+class StocktakeChangedError(Exception):
+    """Stock moved since the counts were reviewed; nothing was applied."""
+
+    def __init__(self, rows: list[StaleCount]) -> None:
+        self.rows = rows
+        super().__init__("Stock changed since you reviewed it. Check the flagged rows.")
+
+
+def _pair_key(m: StockMovement) -> tuple[str, str]:
+    """A stable order, so a replay lists the adjustments as the first response did."""
+    return (str(m.film_id), str(m.format_id))
+
+
+async def record_stocktake(
+    db: AsyncSession, actor: Principal, data: StocktakeIn
+) -> tuple[list[StockMovement], bool]:
+    """Record the differences from several counts as adjustments, all or nothing.
+
+    Returns (movements, replayed). A batch id already applied returns its movements unchanged. If
+    any pair's stock differs from the `expected` the user reviewed, nothing is written and
+    StocktakeChangedError lists those rows so they can be reviewed again.
+    """
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        {"key": f"stocktake:{data.batch_id}"},
+    )
+    done = (
+        (
+            await db.execute(
+                select(StockMovement).where(StockMovement.count_batch_id == data.batch_id)
+            )
+        )
+        .scalars()
+        .unique()
+        .all()
+    )
+    if done:
+        return sorted(done, key=_pair_key), True
+    for count in data.counts:
+        await _require(db, Film, count.film_id, "film")
+        await _require(db, Format, count.format_id, "format")
+    before = await lock_pairs(db, [(c.film_id, c.format_id) for c in data.counts])
+    stale = []
+    for count in data.counts:
+        current = before[(count.film_id, count.format_id)]
+        if current != count.expected:
+            film = await db.get(Film, count.film_id)
+            fmt = await db.get(Format, count.format_id)
+            stale.append(
+                StaleCount(
+                    count.film_id,
+                    count.format_id,
+                    film.name if film else "film",
+                    fmt.name if fmt else "format",
+                    count.expected,
+                    current,
+                )
+            )
+    if stale:
+        await db.rollback()
+        raise StocktakeChangedError(stale)
+    movements = [
+        StockMovement(
+            kind="adjustment",
+            film_id=c.film_id,
+            format_id=c.format_id,
+            occurred_on=data.occurred_on,
+            rolls=c.counted - before[(c.film_id, c.format_id)],
+            counted_to=c.counted,
+            count_batch_id=data.batch_id,
+            notes=data.notes,
+            created_by=actor.user_id,
+            updated_by=actor.user_id,
+        )
+        for c in data.counts
+        if c.counted != before[(c.film_id, c.format_id)]
+    ]
+    # Final stock equals the (non-negative) counted figure, so no non-negative check is needed.
+    db.add_all(movements)
+    await db.commit()
+    for movement in movements:
+        await db.refresh(movement)
+    return sorted(movements, key=_pair_key), False
 
 
 async def create_movement(db: AsyncSession, actor: Principal, data: MovementIn) -> StockMovement:

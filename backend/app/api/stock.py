@@ -3,6 +3,7 @@ from datetime import date
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principal import READ, WRITE, Principal, require_scope
@@ -16,6 +17,7 @@ from app.schemas.stock import (
     MovementPage,
     MovementUpdate,
     StockRowOut,
+    StocktakeIn,
 )
 from app.services import stock as svc
 
@@ -80,6 +82,23 @@ async def create_adjustment(body: AdjustmentIn, who: Writer, db: Db) -> Movement
         return MovementOut.model_validate(await svc.record_adjustment(db, who, body))
     except (svc.InvalidMovementError, svc.NotFoundError) as exc:
         raise _http(exc) from exc
+
+
+class StocktakeOut(BaseModel):
+    replayed: bool
+    adjustments: list[MovementOut]
+
+
+@router.post("/stocktakes", status_code=201)
+async def create_stocktake(body: StocktakeIn, who: Writer, db: Db) -> StocktakeOut:
+    """Apply several reviewed counts at once; 409 `stock_changed` lists rows that moved."""
+    try:
+        movements, replayed = await svc.record_stocktake(db, who, body)
+    except (svc.InvalidMovementError, svc.NotFoundError) as exc:
+        raise _http(exc) from exc
+    return StocktakeOut(
+        replayed=replayed, adjustments=[MovementOut.model_validate(m) for m in movements]
+    )
 
 
 @router.patch("/stock-movements/{movement_id}")
