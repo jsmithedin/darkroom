@@ -6,20 +6,34 @@ import { Dashboard } from "./Dashboard";
 
 // jsdom has no canvas, so stand in for the chart library.
 vi.mock("../components/MonthlyChart", () => ({
-  MonthlyChart: ({ label }: { label: string }) => <div role="img" aria-label={label} />,
+  MonthlyChart: ({
+    current,
+    previous,
+    label,
+  }: {
+    current: { label: string; points: { count: number }[] };
+    previous: { label: string; points: { count: number }[] };
+    label: string;
+  }) => (
+    <div
+      role="img"
+      aria-label={label}
+      data-series={`${previous.label}:${previous.points.reduce((n, p) => n + p.count, 0)}|${current.label}:${current.points.reduce((n, p) => n + p.count, 0)}`}
+    />
+  ),
 }));
 
-const months = () =>
+const months = (jan: number) =>
   Array.from({ length: 12 }, (_, i) => ({
     month: i + 1,
-    count: i === 0 ? 2 : 0,
-    cumulative: 2,
+    count: i === 0 ? jan : 0,
+    cumulative: jan,
   }));
 
 const stats = (year: number) => ({
   year,
-  monthly: months(),
-  previous_monthly: months(),
+  monthly: months(2),
+  previous_monthly: months(7),
   ytd: { this_year: 5, last_year_to_date: 3 },
   breakdowns: {
     camera: [
@@ -60,12 +74,15 @@ afterEach(() => vi.unstubAllGlobals());
 it("year selector defaults to the server's current year and can change", async () => {
   const { user } = renderApp(<Dashboard />);
   const select = await screen.findByLabelText("Year");
-  expect(select).toHaveValue("2026");
-  expect(api.calls.find((c) => c.url.startsWith("/api/stats"))!.url).toBe("/api/stats");
+  await waitFor(() => expect(select).toHaveValue("2026"));
+  expect(api.calls.some((c) => c.url === "/api/stats")).toBe(true);
+  expect(api.calls.some((c) => c.url.startsWith("/api/stats?year="))).toBe(false);
   await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(2));
   await user.selectOptions(select, "2025");
   await waitFor(() => expect(api.calls.some((c) => c.url === "/api/stats?year=2025")).toBe(true));
-  expect(await screen.findByRole("img", { name: "Rolls per month in 2025" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("img", { name: "Rolls per month in 2025, compared with 2024" }),
+  ).toBeInTheDocument();
 });
 
 it("breakdown bars scale to the largest row", async () => {
@@ -91,4 +108,43 @@ it("lists idle cameras and spend", async () => {
   const spend = screen.getByRole("region", { name: "Spend" });
   expect(await within(spend).findByText("£26.55")).toBeInTheDocument();
   expect(within(spend).getByText("–")).toBeInTheDocument();
+});
+
+
+it("sends both years to the chart", async () => {
+  renderApp(<Dashboard />);
+  const chart = await screen.findByRole("img", { name: /Rolls per month in 2026/ });
+  expect(chart).toHaveAttribute("data-series", "2025:7|2026:2");
+});
+
+it("keeps the year selector when the stats request fails", async () => {
+  api.handler = (url) => {
+    if (url === "/api/stats") return reply(stats(2026));
+    if (url.startsWith("/api/stats?year=")) return reply({ detail: "nope" }, 500);
+    if (url === "/api/stats/spend") return reply([{ year: 1850, purchases_pence: 0, bulk_pence: 0, rolls: 0, cost_per_roll_pence: null }, { year: 2025, purchases_pence: 0, bulk_pence: 0, rolls: 0, cost_per_roll_pence: null }]);
+    if (url === "/api/stats/camera-idle") return reply([]);
+    return undefined;
+  };
+  const { user } = renderApp(<Dashboard />);
+  const select = await screen.findByLabelText("Year");
+  await waitFor(() => expect(within(select).getAllByRole("option")).toHaveLength(2));
+  expect(within(select).queryByRole("option", { name: "1850" })).not.toBeInTheDocument();
+  await user.selectOptions(select, "2025");
+  expect(await screen.findByText(/Could not load the statistics/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Year")).toBeInTheDocument();
+});
+
+it("says so, with a retry, when spend or cameras fail to load", async () => {
+  api.handler = (url) => {
+    if (url === "/api/stats") return reply(stats(2026));
+    if (url === "/api/stats/spend") return reply({ detail: "down" }, 500);
+    if (url === "/api/stats/camera-idle") return reply({ detail: "down" }, 500);
+    return undefined;
+  };
+  renderApp(<Dashboard />);
+  const spend = await screen.findByRole("region", { name: "Spend" });
+  expect(await within(spend).findByText(/Could not load the spend figures/)).toBeInTheDocument();
+  expect(within(spend).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  const idle = screen.getByRole("region", { name: "Cameras not used lately" });
+  expect(await within(idle).findByText(/Could not load the cameras/)).toBeInTheDocument();
 });
