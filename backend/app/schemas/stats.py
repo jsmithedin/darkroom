@@ -62,4 +62,6 @@ class LowStock(BaseModel):
     rolls_remaining: int
     rolls_developed: int
     window_days: int
-    days_of_stock: int
+    days_of_stock: int  # rounded down
+    # 35mm only: an unfinished bulk spool of this film exists, so loading cassettes may be the fix.
+    on_bulk_spool: bool = False

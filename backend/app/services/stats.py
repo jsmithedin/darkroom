@@ -204,7 +204,12 @@ async def low_stock(db: AsyncSession, today: date) -> list[LowStock]:
             stock_levels,
             (stock_levels.c.film_id == Roll.film_id) & (stock_levels.c.format_id == Roll.format_id),
         )
-        .where(Roll.dev_date >= since, Roll.dev_date <= today)
+        .where(
+            Roll.dev_date >= since,
+            Roll.dev_date <= today,
+            Film.archived_at.is_(None),
+            Format.archived_at.is_(None),
+        )
         .group_by(Film.id, Format.id, stock_levels.c.rolls)
         .having(
             developed >= MIN_ROLLS,
@@ -212,14 +217,21 @@ async def low_stock(db: AsyncSession, today: date) -> list[LowStock]:
             balance * WINDOW_DAYS <= COVER_DAYS * developed,
         )
     )
+    rows = list(rows)
+    spooled = set(
+        (await db.execute(select(BulkRoll.film_id).where(BulkRoll.finished.is_(False))))
+        .scalars()
+        .all()
+    )
     found = [
         LowStock(
-            film=LowStockFilm(id=film_id, name=film_name, type=str(film_type)),
+            film=LowStockFilm(id=film_id, name=film_name, type=film_type),
             format=LowStockFormat(id=format_id, name=format_name),
             rolls_remaining=int(remaining),
             rolls_developed=int(count),
             window_days=WINDOW_DAYS,
             days_of_stock=max(0, int(remaining)) * WINDOW_DAYS // int(count),
+            on_bulk_spool=str(format_name).lower() == "35mm" and film_id in spooled,
         )
         for film_id, film_name, film_type, format_id, format_name, count, remaining in rows
     ]

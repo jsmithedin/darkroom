@@ -150,6 +150,7 @@ it("explains each low-stock film with its roll count and recent usage", async ()
       rolls_developed: 6,
       window_days: 90,
       days_of_stock: 0,
+      on_bulk_spool: false,
     },
   ];
   renderApp(<Stock />);
@@ -164,4 +165,32 @@ it("shows nothing when no film is running low", async () => {
   renderApp(<Stock />);
   await screen.findByText("Tri-X");
   expect(screen.queryByRole("region", { name: "Running low" })).toBeNull();
+});
+
+it("words a negative balance, one roll and a bulk spool, and links to a purchase", async () => {
+  low = [
+    {
+      film: film("f2", "HP5", "bw"),
+      format: fmt("m35", "35mm"),
+      rolls_remaining: -2,
+      rolls_developed: 1,
+      window_days: 90,
+      days_of_stock: 0,
+      on_bulk_spool: true,
+    },
+  ];
+  renderApp(<Stock />);
+  const panel = await screen.findByRole("region", { name: "Running low" });
+  expect(within(panel).getByText(/None left \(2 short\)\. 1 roll developed/)).toBeInTheDocument();
+  expect(within(panel).getByText(/bulk film on a spool/)).toBeInTheDocument();
+  expect(within(panel).getByRole("link", { name: "Record a purchase" })).toHaveAttribute(
+    "href",
+    "/purchases?film=f2&format=m35",
+  );
+});
+
+it("says so when low stock cannot be checked", async () => {
+  api.handler = () => reply({ detail: "nope" }, 500);
+  renderApp(<Stock />);
+  expect(await screen.findByText(/Could not check for low stock/)).toBeInTheDocument();
 });

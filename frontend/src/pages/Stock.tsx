@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   type FilmRef,
   type FilmType,
@@ -95,8 +95,8 @@ function LowStockPanel() {
   }
   if (!low.data || low.data.length === 0) return null;
   return (
-    <section aria-label="Running low" className="panel">
-      <h2>Running low</h2>
+    <section aria-labelledby="running-low-heading" className="panel low-stock">
+      <h2 id="running-low-heading">Running low</h2>
       <ul className="cards">
         {low.data.map((item: LowStockItem) => (
           <li key={`${item.film.id}:${item.format.id}`}>
@@ -105,10 +105,19 @@ function LowStockPanel() {
               <span className="small">{item.format.name}</span>
             </div>
             <p className="small">
-              {plural(item.rolls_remaining, "roll")} left. {plural(item.rolls_developed, "roll")}{" "}
-              developed in the last {item.window_days} days, about {plural(item.days_of_stock, "day")}{" "}
-              of stock at that pace.
+              {item.rolls_remaining < 0
+                ? `None left (${-item.rolls_remaining} short).`
+                : `${plural(item.rolls_remaining, "roll")} left.`}{" "}
+              {plural(item.rolls_developed, "roll")} developed in the last {item.window_days} days,
+              about {plural(item.days_of_stock, "day")} of stock at that pace.
+              {item.on_bulk_spool && " There is bulk film on a spool, so you may only need to load cassettes."}
             </p>
+            <Link
+              className="button"
+              to={`/purchases?film=${item.film.id}&format=${item.format.id}`}
+            >
+              Record a purchase
+            </Link>
           </li>
         ))}
       </ul>

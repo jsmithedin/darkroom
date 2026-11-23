@@ -136,6 +136,7 @@ export interface LowStockItem {
   rolls_developed: number;
   window_days: number;
   days_of_stock: number;
+  on_bulk_spool: boolean;
 }
 
 /** Film developed regularly and close to running out. Under the "stock" key so any stock or

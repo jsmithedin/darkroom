@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import ORMExecuteState
 
@@ -255,3 +255,55 @@ async def test_low_stock_endpoint(authed: AsyncClient, gear: dict[str, str]) -> 
     resp = await authed.get("/api/stats/low-stock")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_low_stock_negative_balance_archived_and_edges(
+    authed: AsyncClient, gear: dict[str, str], db_session: AsyncSession
+) -> None:
+    today = date(2026, 11, 23)
+    await stock_up(authed, gear, 1)
+    for day in ("2026-11-23", "2026-11-22", "2026-11-21"):
+        await add_roll(authed, gear, day)
+    await add_roll(authed, gear, "2026-11-24")  # tomorrow: not usage
+    [row] = await low_stock(db_session, today)
+    assert (row.rolls_developed, row.rolls_remaining) == (3, 1)
+
+    # a counted roll after the purchase is removed leaves a negative balance
+    resp = await authed.post(
+        "/api/rolls", json=roll_body(gear, dev_date="2026-11-20", counts_against_stock=True)
+    )
+    assert resp.status_code == 201, resp.text
+    await db_session.execute(text("DELETE FROM stock_movements"))
+    [row] = await low_stock(db_session, today)
+    assert (row.rolls_remaining, row.days_of_stock) == (-1, 0)
+
+    # archive the film: it is no longer flagged
+    assert (await authed.post(f"/api/films/{gear['film']}/archive")).status_code in (200, 204)
+    assert await low_stock(db_session, today) == []
+
+
+async def test_low_stock_flags_bulk_spool_and_sorts(
+    authed: AsyncClient, gear: dict[str, str], db_session: AsyncSession
+) -> None:
+    today = date(2026, 11, 23)
+    for day in ("2026-11-01", "2026-11-02", "2026-11-03"):
+        await add_roll(authed, gear, day)
+    await authed.post(
+        "/api/bulk-rolls", json={"label": "Spool", "film_id": gear["film"], "length_mm": 17_000}
+    )
+    [row] = await low_stock(db_session, today)
+    assert row.on_bulk_spool is True
+    assert row.film.type in ("bw", "colour", "slide")
+
+
+async def test_low_stock_endpoint_shape(authed: AsyncClient, gear: dict[str, str]) -> None:
+    from datetime import timedelta
+
+    day = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    for _ in range(3):
+        await add_roll(authed, gear, day)
+    [row] = (await authed.get("/api/stats/low-stock")).json()
+    assert row["window_days"] == 90
+    assert row["rolls_developed"] == 3
+    assert row["days_of_stock"] == 0
+    assert isinstance(row["film"]["type"], str)
