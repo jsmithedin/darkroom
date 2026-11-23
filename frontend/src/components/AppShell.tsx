@@ -14,6 +14,7 @@ export function AppShell() {
         <strong className="brand">Darkroom</strong>
         <nav aria-label="Main">
           <NavLink to="/" end>Log</NavLink>
+          <NavLink to="/dashboard">Dashboard</NavLink>
           <NavLink to="/stock">Stock</NavLink>
           <NavLink to="/purchases">Purchases</NavLink>
           <NavLink to="/dev-times">Dev times</NavLink>
