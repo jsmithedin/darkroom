@@ -282,8 +282,13 @@ async def _load(
     spools: dict[str, BulkRoll] = {
         _fold(str(b.label)): b for b in (await session.execute(select(BulkRoll))).scalars()
     }
+    by_id = {b.id: b for b in spools.values()}
     for row, fp, occ in ledger.keys("bulk", sheet.bulk):
         if ledger.is_done("bulk", fp, occ):
+            # Renamed since the import? The recorded id still resolves the sheet's label.
+            recorded = ledger.target("bulk", fp, occ)
+            if recorded in by_id:
+                spools.setdefault(_fold(row.label), by_id[recorded])
             continue
         if _fold(row.label) in spools:
             raise LoadError(f"Bulk roll '{row.label}' (line {row.line}) already exists.")

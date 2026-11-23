@@ -226,3 +226,18 @@ async def test_renamed_reference_item_still_resolves_on_rerun(
     report = await load_all(db_session, more, actor)  # type: ignore[arg-type]
     assert report.inserted == {"tracker": 1}
     assert await count(db_session, Camera) == 1
+
+
+async def test_renamed_bulk_spool_still_resolves_for_a_new_bulk_load(
+    db_session: AsyncSession, actor: object
+) -> None:
+    await load_all(db_session, sheet(), actor)  # type: ignore[arg-type]
+    spool = (await db_session.execute(select(BulkRoll))).scalar_one()
+    spool.label = "Spool A"
+    await db_session.flush()
+    load = PurchaseRow(
+        2, "bulk_load", date(2026, 11, 27), None, None, 1, None, None, "Bulk 1", 36, None
+    )
+    report = await load_all(db_session, sheet(purchases=[load]), actor)  # type: ignore[arg-type]
+    assert report.inserted == {"purchases": 1}
+    assert await count(db_session, BulkRoll) == 1
