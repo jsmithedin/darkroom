@@ -37,23 +37,6 @@ export interface Series {
   points: MonthPoint[];
 }
 
-/** Bumps whenever the system light/dark preference changes, so the canvas colours can follow. */
-function useThemeVersion(): number {
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!query) return;
-    const bump = () => setVersion((v) => v + 1);
-    query.addEventListener("change", bump);
-    return () => query.removeEventListener("change", bump);
-  }, []);
-  return version;
-}
-
-/**
- * Rolls per month as bars with the running total as a line, for the chosen year and the one
- * before it; follows the light/dark theme.
- */
 export function MonthlyChart({
   current,
   previous,
@@ -64,7 +47,7 @@ export function MonthlyChart({
   label: string;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const theme = useThemeVersion();
+  const [cumulative, setCumulative] = useState(false);
 
   useEffect(() => {
     if (!canvas.current) return;
@@ -76,54 +59,42 @@ export function MonthlyChart({
       type: "bar",
       data: {
         labels: MONTHS,
-        datasets: [
-          {
-            type: "bar",
-            label: `${previous.label} rolls`,
-            data: previous.points.map((p) => p.count),
-            backgroundColor: muted,
-          },
-          {
-            type: "bar",
-            label: `${current.label} rolls`,
-            data: current.points.map((p) => p.count),
-            backgroundColor: accent,
-          },
-          {
-            type: "line",
-            label: `${previous.label} running total`,
-            data: previous.points.map((p) => p.cumulative),
-            borderColor: muted,
-            backgroundColor: muted,
-            borderDash: [6, 4],
-            spanGaps: false,
-          },
-          {
-            type: "line",
-            label: `${current.label} running total`,
-            data: current.points.map((p) => p.cumulative),
-            borderColor: fg,
-            backgroundColor: fg,
-            spanGaps: false,
-          },
-        ],
+        datasets: [current, previous].map((series, index) => ({
+          type: cumulative ? "line" : "bar",
+          label: series.label,
+          data: series.points.map((point) => cumulative ? point.cumulative : point.count),
+          backgroundColor: index === 0 ? accent : muted,
+          borderColor: index === 0 ? accent : muted,
+          borderDash: index === 1 ? [5, 4] : [],
+          borderRadius: 2,
+          maxBarThickness: 22,
+          pointRadius: 3,
+        })),
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: fg } } },
+        animation: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { position: "bottom", labels: { color: fg, boxWidth: 12, padding: 16 } } },
         scales: {
-          x: { ticks: { color: fg }, grid: { color: border } },
+          x: { ticks: { color: fg }, grid: { display: false } },
           y: { beginAtZero: true, ticks: { color: fg, precision: 0 }, grid: { color: border } },
         },
       },
     });
     return () => chart.destroy();
-  }, [current, previous, theme]);
+  }, [current, previous, cumulative]);
 
   return (
-    <div className="chart">
-      <canvas ref={canvas} role="img" aria-label={label} />
-    </div>
+    <>
+      <div className="chart-modes" role="group" aria-label="Chart view">
+        <button type="button" aria-pressed={!cumulative} onClick={() => setCumulative(false)}>Monthly</button>
+        <button type="button" aria-pressed={cumulative} onClick={() => setCumulative(true)}>Running total</button>
+      </div>
+      <div className="chart">
+      <canvas ref={canvas} role="img" aria-label={cumulative ? `Running totals for ${current.label} and ${previous.label}` : label} />
+      </div>
+    </>
   );
 }

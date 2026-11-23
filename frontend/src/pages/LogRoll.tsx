@@ -5,8 +5,10 @@ export function LogRoll() {
   return (
     <>
       <h1>Log a roll</h1>
-      <RollForm />
-      <RecentRolls />
+      <div className="notebook">
+        <RollForm />
+        <RecentRolls />
+      </div>
     </>
   );
 }

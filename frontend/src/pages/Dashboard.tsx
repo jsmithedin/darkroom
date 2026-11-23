@@ -110,8 +110,9 @@ export function Dashboard() {
   const shown = chosen ?? s?.year;
 
   return (
-    <div className="stack">
-      <h2>Dashboard</h2>
+    <div className="dashboard">
+      <header className="dashboard-heading">
+      <h1>Dashboard</h1>
       <label>
         Year
         <select
@@ -126,13 +127,16 @@ export function Dashboard() {
           ))}
         </select>
       </label>
+      </header>
 
       {stats.isPending && <p>Loading…</p>}
       {stats.isError && <Failed what="the statistics" onRetry={() => void stats.refetch()} />}
       {s && <YearResults s={s} />}
 
-      <IdlePanel />
-      <SpendPanel spend={spend} />
+      <div className="dashboard-ledger">
+        <IdlePanel />
+        <SpendPanel spend={spend} />
+      </div>
     </div>
   );
 }
@@ -142,7 +146,9 @@ function YearResults({ s }: { s: Stats }) {
   const total = s.monthly.reduce((n, m) => n + m.count, 0);
   return (
     <>
-      <section className="panel" aria-label="Year to date">
+      <div className="activity">
+      <section className="year-summary" aria-label="Year to date">
+        <p className="summary-label">Year to date</p>
         <h3>
           {plural(s.ytd.this_year, "roll")} in {s.year}
         </h3>
@@ -162,9 +168,12 @@ function YearResults({ s }: { s: Stats }) {
         />
       </section>
 
+      </div>
+      <div className="breakdown-grid">
       {BREAKDOWNS.map(({ key, title }) => (
         <Breakdown key={key} title={title} rows={s.breakdowns[key] ?? []} />
       ))}
+      </div>
     </>
   );
 }
