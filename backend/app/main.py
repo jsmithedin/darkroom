@@ -14,6 +14,7 @@ from app.api import docs as docs_api
 from app.api import reference as reference_api
 from app.api import rolls as rolls_api
 from app.api import settings as settings_api
+from app.api import stats as stats_api
 from app.api import stock as stock_api
 from app.api import tokens as tokens_api
 from app.auth.google import GoogleOIDC
@@ -72,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(rolls_api.router)
     app.include_router(settings_api.router)
     app.include_router(stock_api.router)
+    app.include_router(stats_api.router)
     app.include_router(bulk_api.router)
     app.include_router(docs_api.router)
     app.state.engine = make_engine(settings.database_url)

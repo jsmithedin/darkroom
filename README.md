@@ -2,7 +2,7 @@
 
 Darkroom is a self-hosted film photography tracker with a REST API and a mobile-first React interface. It replaces the "Film Photography Tracker v2" Google Sheet. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plan.
 
-Google sign-in, personal access tokens, reference lists, the roll log, stock, purchases, bulk film and the one-off CSV importer are implemented. Phase 5 covers development times, statistics and the dashboard. The current MCP endpoint exposes a connectivity check. MCP authentication and tracker tools, CSV export, backups and PWA polish are planned.
+Google sign-in, personal access tokens, reference lists, the roll log, stock, purchases, bulk film, the one-off CSV importer and the statistics API are implemented. Phase 5 also covers development times and the dashboard. The current MCP endpoint exposes a connectivity check. MCP authentication and tracker tools, CSV export, backups and PWA polish are planned.
 
 ## Local development
 
@@ -34,6 +34,8 @@ For scripts and MCP clients. Create one while signed in (Settings screen in the 
 ## API documentation
 
 Interactive docs are at `/api/docs` (and `/api/redoc`), and the OpenAPI schema at `/api/openapi.json`. They need sign-in: open them in the browser while signed in, or fetch the schema with `Authorization: Bearer drk_...` (a read token is enough).
+
+`GET /api/stats?year=2026` returns monthly roll counts for the selected and preceding years, a year-to-date comparison and breakdowns. Omit the year to use the current year in the configured timezone. The API also serves `GET /api/stats/camera-idle` and `GET /api/stats/spend`.
 
 ## CI
 
