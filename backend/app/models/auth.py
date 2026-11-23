@@ -56,3 +56,64 @@ class PersonalAccessToken(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class OAuthClient(Base):
+    """Registered public OAuth client and its allowed redirect URIs."""
+
+    __tablename__ = "oauth_clients"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    redirect_uris: Mapped[list[str]] = mapped_column(ARRAY(String))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OAuthCode(Base):
+    """Short-lived, single-use authorization code bound to a client and resource."""
+
+    __tablename__ = "oauth_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
+    )
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("oauth_clients.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String, unique=True)
+    code_challenge: Mapped[str] = mapped_column(String)
+    redirect_uri: Mapped[str] = mapped_column(String)
+    resource: Mapped[str] = mapped_column(String)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+
+class OAuthToken(Base):
+    """Hashes for an access/refresh pair, retained for refresh replay detection."""
+
+    __tablename__ = "oauth_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid.uuid4, server_default=text("gen_random_uuid()")
+    )
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("oauth_clients.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    family_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    access_token_hash: Mapped[str] = mapped_column(String, unique=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String, unique=True)
+    resource: Mapped[str] = mapped_column(String)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    access_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    refresh_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
