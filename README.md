@@ -48,6 +48,19 @@ In Google Cloud Console create an OAuth client (type: Web application) and add t
 
 Put the client id and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and list the emails that may sign in in `ALLOWED_EMAILS` (JSON list). Anyone else sees a "not authorised" page and gets no session. Session cookies are `Secure`, so browsers only keep them over HTTPS (localhost is exempt in Chrome and Firefox).
 
+## Importing the Google Sheet
+
+One-off (safe to repeat) import of the old sheet. Export each tab as CSV (File, Download, CSV) into `./import/` (the folder is gitignored): `Tracker`, `Films`, `Lists`, `Bulk`, `Purchases` and `Dev Times`. Google's own names (`Film Photography Tracker v2 - Tracker.csv`) are fine.
+
+Sign in to the app once first (the import needs a user), then:
+
+```
+docker compose run --rm -v "$PWD/import:/import:ro" app python -m app.importer.cli /import --dry-run
+docker compose run --rm -v "$PWD/import:/import:ro" app python -m app.importer.cli /import
+```
+
+Locally, from the repository root: `PYTHONPATH=backend uv run python -m app.importer.cli ./import`. It prints what it inserted and a reconciliation (117 rolls; 60 in 2025, 57 in 2026; 61 x 35mm and 88 x 120 in stock; Bulk 1 7.3 m left). If any figure differs, or a camera, lens, film, developer, filter or format is unknown, **nothing is imported** and it exits non-zero (1 for a mismatch, 2 for bad input). `--dry-run` checks and rolls back. Re-running inserts nothing.
+
 ## Deploy (Docker Compose)
 
 ```
