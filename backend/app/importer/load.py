@@ -215,10 +215,11 @@ class _Ledger:
 
 
 async def load_all(
-    session: AsyncSession, sheet: ParsedSheet, actor_user_id: uuid.UUID
+    session: AsyncSession, sheet: ParsedSheet, actor_user_id: uuid.UUID, commit: bool = True
 ) -> LoadReport:
     """Import everything in one transaction. Raises `UnknownNames` (nothing written) or
-    `LoadError`; any failure rolls the whole run back."""
+    `LoadError`; any failure rolls the whole run back. With `commit=False` the work is flushed
+    but left open, so the caller can check it (reconciliation) and then commit or roll back."""
     existing = await _existing(session)
     check_names(sheet, existing)  # before any write
     report = LoadReport()
@@ -226,7 +227,10 @@ async def load_all(
     try:
         await ledger.load()
         await _load(session, sheet, actor_user_id, existing, ledger)
-        await session.commit()
+        if commit:
+            await session.commit()
+        else:
+            await session.flush()
     except BaseException:
         await session.rollback()
         raise
