@@ -438,11 +438,12 @@ FILMS_REQUIRED = {
 def _opening_columns(t: Table) -> list[tuple[int, str]]:
     """Every 'Opening <format>' column as (index, normalised format). Any format name counts,
     not just numbers, so 'Opening 4x5' is read (and reported as unknown by the loader) rather
-    than silently dropped. An 'Opening date' column is not a count."""
+    than silently dropped. Only format-like names count (a number, `35mm`, `4x5`), so the sheet's
+    'Opening stock counted on' note is not a count."""
     columns: list[tuple[int, str]] = []
     for i, header in enumerate(t.header):
         m = re.fullmatch(r"\s*opening\s*(.+?)\s*", header, flags=re.IGNORECASE)
-        if m and key(m.group(1)) not in ("date", "on", "stockdate"):
+        if m and re.fullmatch(r"\d+(mm)?|\d+x\d+", key(m.group(1))):
             columns.append((i, parse_format(m.group(1))))
     return columns
 
@@ -742,6 +743,15 @@ def parse_dev_time_refs(path: Path) -> list[DevTimeRef]:
     return rows
 
 
+def find_export(folder: Path, filename: str) -> Path | None:
+    """`Tracker.csv`, or Google Sheets' own name for it (`<Spreadsheet> - Tracker.csv`)."""
+    exact = folder / filename
+    if exact.exists():
+        return exact
+    matches = sorted(folder.glob(f"* - {filename}"))
+    return matches[0] if matches else None
+
+
 @dataclass(frozen=True)
 class ParsedSheet:
     """Everything read from the exports, ready for the loader."""
@@ -769,8 +779,8 @@ def parse_all(folder: Path) -> ParsedSheet:
     result: dict[str, object] = {}
     problems: list[str] = []
     for name, (filename, fn) in names.items():
-        path = folder / filename
-        if not path.exists():
+        path = find_export(folder, filename)
+        if path is None:
             problems.append(f"{filename}: file not found in {folder}")
             continue
         try:
