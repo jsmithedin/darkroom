@@ -75,3 +75,12 @@ textarea { font: inherit; font-size: 16px; padding: 0.5rem 0.75rem; border: 1px 
 .meter { height: 0.75rem; border-radius: 0.4rem; background: var(--border); overflow: hidden; }
 .meter-fill { height: 100%; background: var(--accent); }
 .bulk-meter { display: grid; gap: 0.25rem; }
+
+/* Dashboard */
+.chart { position: relative; height: 16rem; }
+.bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+.bars li { display: grid; grid-template-columns: minmax(6rem, 10rem) 1fr 2.5rem; align-items: center; gap: 0.5rem; }
+.bar-track { display: block; height: 0.9rem; background: var(--border); border-radius: 0.45rem; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--accent); }
+.bar-count { text-align: right; font-variant-numeric: tabular-nums; }
+ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }

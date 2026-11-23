@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SettingsLayout } from "./components/SettingsLayout";
@@ -10,6 +11,9 @@ import { Settings } from "./pages/Settings";
 import { SettingsBulk } from "./pages/SettingsBulk";
 import { Stock } from "./pages/Stock";
 
+// Loaded on demand so the chart library stays out of the main bundle.
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+
 export function App() {
   return (
     <BrowserRouter>
@@ -21,6 +25,11 @@ export function App() {
           <Route path="/reference/:kind" element={<Reference />} />
           <Route path="/stock" element={<Stock />} />
           <Route path="/purchases" element={<Purchases />} />
+          <Route path="/dashboard" element={
+              <Suspense fallback={<p>Loading…</p>}>
+                <Dashboard />
+              </Suspense>
+            } />
           <Route path="/dev-times" element={<DevTimes />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Settings />} />
