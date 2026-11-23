@@ -199,34 +199,34 @@ export function Stock() {
       {stock.data && stock.data.length === 0 && <p>No individual rolls in stock.</p>}
       {!!stock.data?.length && rolls.length === 0 && <p>No individual rolls match your filters.</p>}
       {rollSections(rolls, rollSort).map(({ title, rows }) => (
-          <section key={title} aria-label={title}>
-            <h2>{title}</h2>
-            <ul className="cards">
-              {rows.map((r) => (
-                <li key={`${r.film.id}:${r.format.id}`} className={r.rolls === 0 ? "muted" : ""}>
-                  <div className="row spread">
-                    <strong>{r.film.name}</strong>
-                    <span className="count">{r.rolls}</span>
-                  </div>
-                  <div className="row spread">
-                    <span className="small">{r.format.name}</span>
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => setTarget({ film_id: r.film.id, format_id: r.format.id })}
-                    >
-                      Recount
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+        <section key={title} aria-label={title}>
+          <h2>{title}</h2>
+          <ul className="cards">
+            {rows.map((r) => (
+              <li key={`${r.film.id}:${r.format.id}`} className={r.rolls === 0 ? "muted" : ""}>
+                <div className="row spread">
+                  <strong>{r.film.name}</strong>
+                  <span className="count">{r.rolls}</span>
+                </div>
+                <div className="row spread">
+                  <span className="small">{r.format.name}</span>
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => setTarget({ film_id: r.film.id, format_id: r.format.id })}
+                  >
+                    Recount
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
 
       {spools.data && spools.data.length > 0 && (
-        <section aria-label="Bulk film">
-          <h2>Bulk film</h2>
+        <section aria-labelledby="bulk-film-heading">
+          <h2 id="bulk-film-heading">Bulk film (35mm)</h2>
           {spools.data.length > 1 && (
             <label>
               Sort bulk film

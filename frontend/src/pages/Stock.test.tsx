@@ -41,7 +41,12 @@ beforeEach(() => {
         const all = url.includes("include_zero=true");
         return reply(all ? rows : rows.filter((r) => r.rolls !== 0));
       }
-      if (url.startsWith("/api/bulk-rolls")) return reply([spool, { ...spool, id: "b2", label: "Bulk 2", film: rows[2].film, left_mm: 500, exposures_left: 8 }]);
+      if (url.startsWith("/api/bulk-rolls")) {
+        return reply([
+          spool,
+          { ...spool, id: "b2", label: "Bulk 2", film: rows[2].film, left_mm: 500, exposures_left: 8 },
+        ]);
+      }
       if (url === "/api/stock-adjustments" && method === "POST") return reply({ id: "adj" }, 201);
       return undefined;
     },
@@ -68,13 +73,13 @@ it("shows empty rows on request", async () => {
 
 it("shows a meter for each unfinished bulk spool", async () => {
   renderApp(<Stock />);
-  const bulk = await screen.findByRole("region", { name: "Bulk film" });
+  const bulk = await screen.findByRole("region", { name: "Bulk film (35mm)" });
   expect(within(bulk).getByText("Bulk 1")).toBeInTheDocument();
   expect(within(bulk).getByText(/185 exposures left/)).toBeInTheDocument();
   expect(within(bulk).getAllByRole("meter")).toHaveLength(2);
 });
 
-it("recounts a row's stock", async () => {
+it("recounts an individual roll from the format-filtered list", async () => {
   const { user } = renderApp(<Stock />);
   const bw = await screen.findByRole("region", { name: "Black and white" });
   await user.selectOptions(screen.getByLabelText("Roll format"), "m35");
@@ -125,10 +130,10 @@ it("sorts across film types and orders bulk spools independently", async () => {
   ] as const) {
     await user.selectOptions(sort, order);
     const rolls = screen.getByRole("region", { name: "Individual rolls" });
-    expect(within(rolls).getAllByRole("listitem").map((li) => li.querySelector("strong")?.textContent))
-      .toEqual(expected);
+    const items = within(rolls).getAllByRole("listitem");
+    expect(items.map((item) => item.querySelector("strong")?.textContent)).toEqual(expected);
   }
   await user.selectOptions(screen.getByLabelText("Sort bulk film"), "remaining");
-  const bulk = screen.getByRole("region", { name: "Bulk film" });
+  const bulk = screen.getByRole("region", { name: "Bulk film (35mm)" });
   expect(within(bulk).getAllByRole("listitem")[0]).toHaveTextContent("Bulk 2");
 });
