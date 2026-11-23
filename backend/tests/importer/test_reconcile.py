@@ -147,6 +147,8 @@ async def test_rolls_already_in_the_app_do_not_disturb_the_check(
     await db_session.flush()
     cam = (await db_session.execute(select(Camera))).scalar_one()
     dev = (await db_session.execute(select(Developer))).scalar_one()
+    # Deliberately unstocked (4x5 stock is -1): this is the live database's state that the
+    # first real import hit, and the import's own figures must not notice it.
     db_session.add(
         Roll(
             dev_date=date(2026, 11, 23),
