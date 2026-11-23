@@ -536,14 +536,27 @@ def parse_lists(path: Path) -> ListsData:
 BULK_REQUIRED = {
     "label": ("bulk", "label", "bulkroll", "bulkid", "id", "name", "roll"),
     "film": ("film",),
-    "length": ("length", "lengthmm", "lengthm", "lengthmetres"),
+    "length": (
+        "length",
+        "lengthmm",
+        "lengthm",
+        "lengthmillimetres",
+        "lengthmillimeters",
+        "lengthmetres",
+        "lengthmeters",
+    ),
 }
 
 
 def _unit(header_key: str) -> str:
-    """Lengths are millimetres unless the normalised header says metres ('lengthm',
-    'lengthmetres'). Centimetres and kilometres are refused rather than guessed."""
-    if header_key.endswith(("cm", "km")):
+    """The length unit named by a normalised header: millimetres unless it says metres.
+
+    Longer unit names are tested first, because 'millimetres' and 'centimetres' end in 'metres'.
+    Centimetres and kilometres are refused rather than guessed.
+    """
+    if header_key.endswith(("millimetres", "millimeters", "mm")):
+        return "mm"
+    if header_key.endswith(("centimetres", "centimeters", "kilometres", "kilometers", "cm", "km")):
         raise ValueError(f"column '{header_key}' is not in mm or m")
     if header_key.endswith(("metres", "meters")) or re.search(r"(?<!m)m$", header_key):
         return "m"

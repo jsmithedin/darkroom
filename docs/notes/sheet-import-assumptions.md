@@ -7,7 +7,7 @@ Date: 2026-11-23. Status: **unverified against the real exports.** The parsers i
 - The header row is the first row containing every required column, so title rows above it are fine.
 - Fully blank rows are skipped. Extra columns are ignored.
 - **Every problem in a file is collected and reported together** (`ParseError.problems`, with line numbers), and if a header row can't be found the error prints the first row it did see. Use that output to adjust aliases. Tracker and Bulk list *every* bad field on a row in one message; Films, Purchases and Dev Times report the first problem per row, so fixing those can reveal another on the same row. An unreadable file, bad encoding or an unclosed quote is reported as that file's problem, and the other files are still checked.
-- Nothing is rounded: money must be whole pence and lengths whole millimetres (extra decimal places are an error, however long). A row with *any* recognised cell filled in but a required one missing (no film name, no bulk label, no date) is reported rather than skipped; only completely empty rows are ignored.
+- Nothing is rounded: money must be whole pence and lengths whole millimetres (extra decimal places are an error, however long). A row with *any* recognised cell filled in but a required one missing (no film name, no bulk label, no date) is reported rather than skipped; only completely empty rows are ignored. The one exception is Tracker: a row with no date, camera or film is treated as a pre-filled formula row and skipped without a message, even if it has other cells (such as the calculated Year and Month) filled in.
 - Files are read as UTF-8 (a BOM from Sheets is fine).
 
 ## Per file

@@ -586,3 +586,36 @@ def test_a_lone_logged_heading_ends_the_block_without_a_blank_row(tmp_path: Path
         "Film,EI,Developer,Minutes\nTri-X,400,HC-110,6\nLogged times,,,\nTri-X,400,HC-110,99\n",
     )
     assert [r.minutes for r in parse_dev_time_refs(path)] == [Decimal("6")]
+
+
+@pytest.mark.parametrize(
+    ("length_header", "used_header", "length", "used", "expected"),
+    [
+        ("Length", "Used before (millimetres)", "17000", "1000", (17000, 1000)),
+        ("Length (millimetres)", "Used before (mm)", "17000", "1000", (17000, 1000)),
+        ("Length (metres)", "Used before (metres)", "17", "1.5", (17000, 1500)),
+        ("Length (m)", "Used before tracking (mm)", "17", "9700", (17000, 9700)),
+        ("Length (mm)", "Used before tracking (m)", "17000", "9.7", (17000, 9700)),
+        ("Length", "Used before tracking", "17000", "9700", (17000, 9700)),
+    ],
+)
+def test_bulk_units_for_length_and_used_columns_are_read_independently(
+    tmp_path: Path,
+    length_header: str,
+    used_header: str,
+    length: str,
+    used: str,
+    expected: tuple[int, int],
+) -> None:
+    path = write(tmp_path, f"Bulk,Film,{length_header},{used_header}\nA,F,{length},{used}\n")
+    (row,) = parse_bulk(path)
+    assert (row.length_mm, row.used_before_mm) == expected
+
+
+@pytest.mark.parametrize(
+    "header",
+    ["Used before (centimetres)", "Used before (cm)", "Used before (kilometres)"],
+)
+def test_bulk_used_column_in_unsupported_units_is_refused(tmp_path: Path, header: str) -> None:
+    with pytest.raises(ParseError):
+        parse_bulk(write(tmp_path, f"Bulk,Film,Length,{header}\nA,F,17000,100\n"))
