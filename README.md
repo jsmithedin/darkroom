@@ -37,6 +37,10 @@ Interactive docs are at `/api/docs` (and `/api/redoc`), and the OpenAPI schema a
 
 `GET /api/stats?year=2026` returns monthly roll counts for the selected and preceding years, a year-to-date comparison and breakdowns. Omit the year to use the current year in the configured timezone. The API also serves `GET /api/stats/camera-idle` and `GET /api/stats/spend`. Cost per roll is annual film spend divided by the number of rolls developed that year.
 
+## MCP OAuth discovery
+
+The public discovery documents are `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`. Both use `PUBLIC_BASE_URL` to identify the issuer. Client registration, token issuance and bearer enforcement are later Phase 6 tasks.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and push to `main`: `backend` (ruff, mypy, pytest with a Postgres container), `frontend` (typecheck, tests and build) and `image` (Docker build, import smoke test, compose has no published ports). By convention `main` only receives PRs with all three passing (branch protection needs GitHub Pro on a private repo).

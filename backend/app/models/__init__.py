@@ -1,6 +1,13 @@
 """Import every model module here so `Base.metadata` is complete for Alembic."""
 
-from app.models.auth import PersonalAccessToken, User, UserSession
+from app.models.auth import (
+    OAuthClient,
+    OAuthCode,
+    OAuthToken,
+    PersonalAccessToken,
+    User,
+    UserSession,
+)
 from app.models.base import AuditMixin, Base
 from app.models.devtimes import DevTimeRef
 from app.models.imports import ImportLedger
@@ -30,6 +37,9 @@ __all__ = [
     "Format",
     "ImportLedger",
     "Lens",
+    "OAuthClient",
+    "OAuthCode",
+    "OAuthToken",
     "PersonalAccessToken",
     "RefKind",
     "Roll",

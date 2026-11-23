@@ -35,3 +35,12 @@ and [client registration requirements](https://modelcontextprotocol.io/specifica
 The current documents establish these compatibility requirements. Their
 publication dates do not establish that Claude changed behavior after the
 Darkroom design was written on 2026-11-22.
+
+## Task 6.1 implementation
+
+Discovery advertises the public-client authorization code and refresh token
+grants. The SDK serves protected-resource metadata with the same issuer as
+the authorization server document. Migration 0009 adds OAuth clients,
+hashed authorization codes, and hashed access and refresh tokens with a rotation
+family ID. Registration, code exchange and bearer enforcement follow in tasks
+6.2 through 6.4.

@@ -19,6 +19,7 @@ from app.api import stats as stats_api
 from app.api import stock as stock_api
 from app.api import tokens as tokens_api
 from app.auth.google import GoogleOIDC
+from app.auth.oauth_server import oauth_metadata_routes
 from app.config import Settings
 from app.db import make_engine
 from app.mcp.server import build_mcp, transport_security
@@ -31,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     mcp = build_mcp()
     mcp_app = mcp.streamable_http_app(transport_security=transport_security(settings))
+    # Discovery is available before the SDK's bearer middleware is enabled in task 6.4.
+    mcp_app.routes.extend(oauth_metadata_routes(settings.public_base_url))
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

@@ -34,7 +34,7 @@ async def migrated(postgres_url: str) -> str:
 async def test_upgrade_head_then_downgrade_base(postgres_url: str, engine: AsyncEngine) -> None:
     cfg = alembic_config(postgres_url)
     await run_alembic(command.upgrade, cfg, "head")
-    assert "users" in await table_names(engine)
+    assert {"users", "oauth_clients", "oauth_codes", "oauth_tokens"} <= await table_names(engine)
     await run_alembic(command.downgrade, cfg, "base")
     assert await table_names(engine) <= {"alembic_version"}
     await run_alembic(command.upgrade, cfg, "head")  # leave migrated for other tests

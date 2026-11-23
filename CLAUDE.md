@@ -50,6 +50,7 @@ Anything imported by `backend/app` belongs in `dependencies`, not the `dev` grou
 - The model is `UserSession` (table `sessions`). Login-in-progress state (state/nonce/verifier) is a short-lived signed cookie `darkroom_oidc`, not a DB row.
 - Tests: `migrated_db` (session fixture) applies migrations once; `client` calls `reset_db` first (truncates every table except `users`, `formats`, `settings`; deletes users; removes non-seed formats; resets settings), so **seed data survives between tests and must never be truncated with CASCADE through `users`**. Add new seeded tables to `KEEP_TABLES`. Auth tests replace `app.state.oidc` with a fake (`tests/auth/conftest.py`). Tests that downgrade must upgrade again.
 - Tests that hit `/mcp` need `LifespanManager` (see `test_mcp_mount.py`).
+- MCP OAuth discovery (Task 6.1) lives in `auth/oauth_server.py`. Both metadata documents use the same issuer derived from `PUBLIC_BASE_URL`. The SDK route factory provides the protected-resource document before bearer enforcement in Task 6.4. Migration 0009 adds the OAuth client, code and token tables.
 - Tests run on one session-scoped event loop (see `pyproject.toml`)
 
 ## Conventions
