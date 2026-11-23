@@ -619,3 +619,37 @@ def test_bulk_units_for_length_and_used_columns_are_read_independently(
 def test_bulk_used_column_in_unsupported_units_is_refused(tmp_path: Path, header: str) -> None:
     with pytest.raises(ParseError):
         parse_bulk(write(tmp_path, f"Bulk,Film,Length,{header}\nA,F,17000,100\n"))
+
+
+def test_films_side_table_note_is_not_an_opening_count(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "Film,Type,Box ISO,Opening 35mm,Opening 120,,Opening stock counted on,22/11/2026\n"
+        "Tri-X,B&W,400,4,0,,Type,35mm in stock\n"
+        "HP5,B&W,400,2,1,,B&W,29\n",
+    )
+    films, openings = parse_films(path)
+    assert [f.name for f in films] == ["Tri-X", "HP5"]
+    assert [(o.film, o.format, o.rolls) for o in openings] == [
+        ("Tri-X", "35mm", 4),
+        ("HP5", "35mm", 2),
+        ("HP5", "120", 1),
+    ]
+
+
+def test_parse_all_finds_files_named_by_google_sheets(tmp_path: Path) -> None:
+    from shutil import copy
+
+    from app.importer.parse import parse_all
+
+    fixtures = Path(__file__).parent / "fixtures"
+    for src, name in {
+        "tracker.csv": "Tracker.csv",
+        "films.csv": "Films.csv",
+        "lists.csv": "Lists.csv",
+        "bulk.csv": "Bulk.csv",
+        "purchases.csv": "Purchases.csv",
+        "dev_times.csv": "Dev Times.csv",
+    }.items():
+        copy(fixtures / src, tmp_path / f"Film Photography Tracker v2 - {name}")
+    assert len(parse_all(tmp_path).tracker) == 4

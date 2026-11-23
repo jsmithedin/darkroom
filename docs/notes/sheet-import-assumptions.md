@@ -1,6 +1,6 @@
 # Sheet import: layout assumptions (Task 4.1)
 
-Date: 2026-11-23. Status: **unverified against the real exports.** The parsers in `backend/app/importer/parse.py` were written from the design spec (section 10) and synthetic fixtures in `backend/tests/importer/fixtures/`, because the real CSV exports were not available. The first run against the real files (Task 4.3's manual check) may need header aliases or layout tweaks. Everything below is what to look at first when a parse fails.
+Date: 2026-11-23. Status: **checked against the real exports on 2026-11-23** (they parse: 117 rolls, 60 in 2025 and 57 in 2026, 61 x 35mm and 88 x 120 opening stock, Bulk 1 17 000 mm with 9 700 used). Files may be named `Tracker.csv` or as Google Sheets names them (`<Spreadsheet> - Tracker.csv`). The Films tab has a side table ("Opening stock counted on") that is not an opening count. Originally written as **unverified against the real exports.** The parsers in `backend/app/importer/parse.py` were written from the design spec (section 10) and synthetic fixtures in `backend/tests/importer/fixtures/`, because the real CSV exports were not available. The first run against the real files (Task 4.3's manual check) may need header aliases or layout tweaks. Everything below is what to look at first when a parse fails.
 
 ## How matching works
 - Columns are found **by header name**, not position. Headers are normalised (lowercase, letters and digits only), so `Dev Time (min)` matches `devtimemin`. Aliases are listed per file in `parse.py` (`TRACKER_REQUIRED`, `FILMS_REQUIRED`, ...).
