@@ -75,6 +75,30 @@ docker compose build
 docker compose up -d
 ```
 
-Compose runs `app` (FastAPI serving the API, `/mcp` and the built frontend; migrations run on start) and `db` (Postgres 16, named volume). No ports are published. `app` joins the existing external docker network named by `CLOUDFLARED_NETWORK`.
+Compose runs `app` (FastAPI serving the API, `/mcp` and the built frontend; migrations run on start), `db` (Postgres 16, named volume) and `backup` (nightly dumps, see below). No ports are published. `app` joins the existing external docker network named by `CLOUDFLARED_NETWORK`.
 
 Tunnel: in the cloudflared config add an ingress rule `film.jamielab.uk` -> `http://app:8000` (use the container name `darkroom-app-1` if `app` is ambiguous on the shared network), then add the DNS route. Set `FORWARDED_ALLOW_IPS` to the tunnel network's subnet so `X-Forwarded-*` is trusted only from cloudflared.
+
+## Backups and restore
+
+The `backup` service runs `pg_dump -Fc` once at start-up and then every night at `BACKUP_HOUR` (UTC, default 02:00). Dumps are written to `./backups/darkroom-YYYYMMDD.dump` (gitignored; running twice on one day replaces that day's file) and dumps older than `BACKUP_RETENTION_DAYS` (default 14) are deleted. A dump is checked with `pg_restore --list` before it is moved into place. Check the last one with `ls -l backups/` or `docker compose logs backup`.
+
+**Take a backup now:** `docker compose run --rm backup once`
+
+**Restore into a scratch database** (to look at or compare, nothing live is touched):
+
+```
+docker compose run --rm backup /ops/restore.sh /backups/darkroom-20261123.dump scratch
+```
+
+It creates the database `scratch`, restores into it and prints the row counts of `rolls` and `stock_movements`; compare them with the live ones (`docker compose exec db psql -U darkroom -Atc "select count(*) from rolls"`). It refuses to touch a database that already exists unless you add `--replace`. Drop the scratch copy afterwards with `docker compose exec db psql -U darkroom -d postgres -c "DROP DATABASE scratch"`.
+
+**Disaster recovery** (replace the live database from a dump):
+
+```
+docker compose stop app
+docker compose run --rm backup /ops/restore.sh /backups/darkroom-20261123.dump darkroom --replace
+docker compose start app
+```
+
+Copy `./backups` off the NUC now and then (a dump on the same disk does not survive the disk). `ops/backup/selftest.sh` runs the whole backup and restore against a throwaway Postgres and compares counts; CI runs it.

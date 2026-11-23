@@ -30,6 +30,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # Nightly pg_dump to ./backups (14 days kept). Restore: see README "Backups and restore".
+  backup:
+    build: ops/backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: darkroom
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATABASE: darkroom
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+
 volumes:
   dbdata:
 
