@@ -16,6 +16,7 @@ export function AppShell() {
           <NavLink to="/" end>Log</NavLink>
           <NavLink to="/stock">Stock</NavLink>
           <NavLink to="/purchases">Purchases</NavLink>
+          <NavLink to="/dev-times">Dev times</NavLink>
           <NavLink to="/reference">Reference</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
