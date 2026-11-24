@@ -41,7 +41,7 @@ Interactive docs are at `/api/docs` (and `/api/redoc`), and the OpenAPI schema a
 
 ## Connecting Claude (MCP)
 
-The MCP server is `https://film.jamielab.uk/mcp` (your `PUBLIC_BASE_URL` plus `/mcp`). Tools: `list_rolls`, `get_stock`, `get_bulk_rolls`, `get_stats`, `get_dev_times`, `list_reference_data` (need `films:read`), and `log_roll`, `update_roll`, `record_purchase`, `record_bulk_load`, `record_given_away`, `record_stock_adjustment`, `create_bulk_roll`, `update_bulk_roll`, `add_reference_item` (need `films:write`). There are no delete tools. Films, cameras, developers and so on can be given by name or id, money is whole pence and lengths whole millimetres. Every successful write appears under **Activity** with the token or connector that made it.
+The MCP server is `https://film.jamielab.uk/mcp` (your `PUBLIC_BASE_URL` plus `/mcp`). Tools: `list_rolls`, `get_stock`, `get_bulk_rolls`, `get_stats`, `get_dev_times`, `list_reference_data`, `get_low_stock`, `get_camera_idle`, `get_spend` (need `films:read`), and `log_roll`, `update_roll`, `record_purchase`, `record_bulk_load`, `record_given_away`, `record_stock_adjustment`, `create_bulk_roll`, `update_bulk_roll`, `add_reference_item` (need `films:write`). There are no delete tools. Films, cameras, developers and so on can be given by name or id, money is whole pence and lengths whole millimetres. Every successful write appears under **Activity** with the token or connector that made it.
 
 **Claude Code, with a personal access token** (the route that has been verified):
 
