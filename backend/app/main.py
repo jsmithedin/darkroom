@@ -12,6 +12,7 @@ from app.api import auth as auth_api
 from app.api import bulk as bulk_api
 from app.api import devtimes as devtimes_api
 from app.api import docs as docs_api
+from app.api import export as export_api
 from app.api import oauth as oauth_api
 from app.api import reference as reference_api
 from app.api import rolls as rolls_api
@@ -104,6 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(stats_api.router)
     app.include_router(bulk_api.router)
     app.include_router(devtimes_api.router)
+    app.include_router(export_api.router)
     app.include_router(docs_api.router)
     app.state.engine = make_engine(settings.database_url)
 
