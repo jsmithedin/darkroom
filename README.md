@@ -8,6 +8,8 @@ Everything in the build plan is implemented except the manual checks listed in `
 
 Needs Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node 22+ (Vite 8 needs 20.19 or newer) and Docker (tests start Postgres 16 via testcontainers).
 
+**Node version matters.** Vite 8 needs Node 20.19 or newer (`frontend/.nvmrc` says 22; `nvm use` picks it up). On an older Node, `npm install` still succeeds but silently skips Rolldown's native binding, and `npm test`/`npm run build` then fail with "Cannot find native binding". If you see that, switch Node and reinstall (`rm -rf node_modules && npm install`).
+
 ```
 uv sync
 uv run pytest
