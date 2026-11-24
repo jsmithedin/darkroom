@@ -7,6 +7,7 @@ alembic_version) are not on it.
 
 import csv
 import io
+import unicodedata
 from collections.abc import AsyncIterator
 from datetime import date, datetime
 from decimal import Decimal
@@ -58,7 +59,8 @@ def _cell(value: Any) -> str:
     if isinstance(value, date | UUID | Decimal | int):
         return str(value)
     text = str(value)
-    return "'" + text if text.startswith(_FORMULA_STARTS) else text
+    # NFKC folds full-width forms such as "＝" to "=", which some locales also treat as formulas
+    return "'" + text if unicodedata.normalize("NFKC", text).startswith(_FORMULA_STARTS) else text
 
 
 def _line(values: list[str]) -> str:

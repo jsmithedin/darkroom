@@ -23,6 +23,7 @@ async def test_every_domain_table_exports(
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"].startswith("text/csv")
     assert f"darkroom-{table}.csv" in resp.headers["content-disposition"]
+    assert resp.headers["cache-control"] == "private, no-store"
     assert parse(resp.text)
 
 
@@ -121,3 +122,23 @@ async def test_listing_and_auth(
     reader = await bearer_client("films:read")
     assert (await reader.get("/api/export/rolls.csv")).status_code == 200
     await reader.aclose()
+
+
+async def test_full_width_formula_prefixes_are_neutralised(
+    authed: AsyncClient, gear: dict[str, str]
+) -> None:
+    resp = await authed.post(
+        "/api/rolls",
+        json=roll_body(gear, counts_against_stock=False, notes="＝1+1", subject="＋cmd"),
+    )
+    assert resp.status_code == 201, resp.text
+    rows = parse((await authed.get("/api/export/rolls.csv")).text)
+    cell = dict(zip(rows[0], rows[1], strict=True))
+    assert cell["notes"] == "'＝1+1"
+    assert cell["subject"] == "'＋cmd"
+
+
+async def test_openapi_declares_csv(authed: AsyncClient) -> None:
+    spec = (await authed.get("/api/openapi.json")).json()
+    ok = spec["paths"]["/api/export/{table}.csv"]["get"]["responses"]["200"]
+    assert "text/csv" in ok["content"]
