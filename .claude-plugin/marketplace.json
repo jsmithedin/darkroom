@@ -1,0 +1,11 @@
+{
+  "name": "darkroom",
+  "owner": { "name": "jsmithedin" },
+  "plugins": [
+    {
+      "name": "darkroom-skills",
+      "source": "./plugins/darkroom-skills",
+      "description": "Skills for the Darkroom film tracker: stock, purchases, logging developed rolls, and logs and statistics. Needs the Darkroom MCP connector."
+    }
+  ]
+}
