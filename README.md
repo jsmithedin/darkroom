@@ -54,6 +54,10 @@ In Google Cloud Console create an OAuth client (type: Web application) and add t
 
 Put the client id and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and list the emails that may sign in in `ALLOWED_EMAILS` (JSON list). Anyone else sees a "not authorised" page and gets no session. Session cookies are `Secure`, so browsers only keep them over HTTPS (localhost is exempt in Chrome and Firefox).
 
+## CSV export
+
+Settings has an Export section with a download link per table (rolls, stock movements, bulk rolls, cameras, lenses, films, developers, filters, formats, dev time references and settings). The same files come from `GET /api/export/<table>.csv` with a session or a token that has `films:read`, for example `curl -H "Authorization: Bearer drk_..." https://film.jamielab.uk/api/export/rolls.csv -o rolls.csv`, and `GET /api/export` lists the names. The first row is the column names; ids are UUIDs, dates are ISO, money is whole pence and lengths whole millimetres, empty cells are blank. Text that starts with `=`, `+`, `-` or `@` gets a leading apostrophe so a spreadsheet does not run it as a formula. Sessions, tokens, OAuth tables and users are never exported.
+
 ## Importing the Google Sheet
 
 One-off (safe to repeat) import of the old sheet. Export each tab as CSV (File, Download, CSV) into `./import/` (the folder is gitignored): `Tracker`, `Films`, `Lists`, `Bulk`, `Purchases` and `Dev Times`. Google's own names (`Film Photography Tracker v2 - Tracker.csv`) are fine.
