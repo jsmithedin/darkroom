@@ -14,7 +14,7 @@ from app.schemas import reference as ref_schemas
 from app.schemas.bulk import BulkRollOut
 from app.schemas.devtimes import DevTimeGroup
 from app.schemas.rolls import RollOut, RollPage
-from app.schemas.stats import Stats
+from app.schemas.stats import CameraIdle, LowStock, SpendYear, Stats
 from app.schemas.stock import FilmRef, FormatRef, StockRowOut
 from app.services import bulk as bulk_svc
 from app.services import devtimes as devtimes_svc
@@ -147,3 +147,35 @@ def register_read_tools(mcp: MCPServer, engine: EngineGetter) -> None:
         async with tool_session(engine) as db:
             items = await ref_svc.list_items(db, kind, include_archived)
             return [out.model_validate(i).model_dump(mode="json") for i in items]
+
+    @mcp.tool()
+    async def get_low_stock() -> list[LowStock]:
+        """Film that is developed regularly and close to running out, with the figures behind it.
+
+        A film appears when at least 3 rolls were developed in the last 90 days and the rolls
+        left would last 30 days or less at that pace. Shows rolls left, rolls developed and
+        days of stock. `on_bulk_spool` means a 35mm bulk spool of that film exists, so loading
+        cassettes (record_bulk_load) may be the fix rather than buying more.
+        """
+        caller(READ)
+        async with tool_session(engine) as db:
+            settings = await get_settings(db)
+            today = stats_svc.london_today(datetime.now(UTC), settings.timezone)
+            return await stats_svc.low_stock(db, today)
+
+    @mcp.tool()
+    async def get_camera_idle() -> list[CameraIdle]:
+        """Each camera with the date it was last used (null if never), to spot idle cameras."""
+        caller(READ)
+        async with tool_session(engine) as db:
+            return await stats_svc.camera_idle(db)
+
+    @mcp.tool()
+    async def get_spend() -> list[SpendYear]:
+        """Film spend per year: purchases and bulk film in pence, rolls developed and cost per roll.
+
+        Cost per roll is that year's spend divided by that year's rolls developed.
+        """
+        caller(READ)
+        async with tool_session(engine) as db:
+            return await stats_svc.spend(db)

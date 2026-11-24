@@ -15,6 +15,9 @@ READ_TOOLS = {
     "get_stats",
     "get_dev_times",
     "list_reference_data",
+    "get_low_stock",
+    "get_camera_idle",
+    "get_spend",
 }
 
 
@@ -90,3 +93,24 @@ async def test_list_reference_data_matches_rest(reader: Any) -> None:
     for kind in ("films", "cameras", "formats"):
         result = await call_tool(session, "list_reference_data", {"kind": kind})
         assert result["structuredContent"]["result"] == (await rest.get(f"/api/{kind}")).json()
+
+
+async def test_get_low_stock_matches_rest(reader: Any) -> None:
+    session, rest, _ = reader
+    result = await call_tool(session, "get_low_stock")
+    assert result["structuredContent"]["result"] == (await rest.get("/api/stats/low-stock")).json()
+
+
+async def test_get_camera_idle_matches_rest(reader: Any) -> None:
+    session, rest, _ = reader
+    result = await call_tool(session, "get_camera_idle")
+    expected = (await rest.get("/api/stats/camera-idle")).json()
+    assert result["structuredContent"]["result"] == expected
+    assert expected[0]["name"] == "Nikon FM2"
+    assert expected[0]["last_used"] == "2026-11-10"
+
+
+async def test_get_spend_matches_rest(reader: Any) -> None:
+    session, rest, _ = reader
+    result = await call_tool(session, "get_spend")
+    assert result["structuredContent"]["result"] == (await rest.get("/api/stats/spend")).json()
