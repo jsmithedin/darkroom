@@ -53,3 +53,14 @@ async def test_unknown_api_path_is_json_404(spa_client: AsyncClient) -> None:
 async def test_path_traversal_does_not_escape(spa_client: AsyncClient) -> None:
     resp = await spa_client.get("/..%2f..%2fetc/passwd")
     assert "root:" not in resp.text
+
+
+async def test_hashed_assets_are_cached_for_a_year(spa_client: AsyncClient) -> None:
+    resp = await spa_client.get("/assets/app.js")
+    assert resp.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+async def test_index_must_be_revalidated(spa_client: AsyncClient) -> None:
+    for path in ["/", "/index.html", "/stock/deep/link"]:
+        resp = await spa_client.get(path)
+        assert resp.headers["cache-control"] == "no-cache"

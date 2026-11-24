@@ -82,6 +82,10 @@ docker compose run --rm -v "$PWD/import:/import:ro" app python -m app.importer.c
 
 Locally, from the repository root: `PYTHONPATH=backend uv run python -m app.importer.cli ./import`. It prints what it inserted and a reconciliation (117 rolls; 60 in 2025, 57 in 2026; 61 x 35mm and 88 x 120 in stock; Bulk 1 7.3 m left). If any figure differs, or a camera, lens, film, developer, filter or format is unknown, **nothing is imported** and it exits non-zero (1 for a mismatch, 2 for bad input). `--dry-run` checks and rolls back. Re-running inserts nothing.
 
+## Native clients
+
+The REST API is independent of the web UI and accepts `Authorization: Bearer drk_...` tokens, so a native app can use a personal access token today. OAuth sign-in for a native app is not supported yet: OAuth tokens only work on `/mcp`. See `docs/notes/frontend-serving-and-native-client.md` for the gaps and the smallest fix.
+
 ## Deploy (Docker Compose)
 
 ```
