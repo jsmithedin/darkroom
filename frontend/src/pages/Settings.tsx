@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
+import { apiFetch } from "../api/client";
 import {
   type CreatedToken,
   type Scope,
@@ -150,6 +152,39 @@ function TokenList() {
   );
 }
 
+function ExportSection() {
+  const tables = useQuery({
+    queryKey: ["export", "tables"],
+    queryFn: () => apiFetch<string[]>("/api/export"),
+  });
+  return (
+    <section aria-labelledby="export-heading">
+      <h2 id="export-heading">Export</h2>
+      <p>
+        Download any table as a CSV file. It is your whole log in plain text, for spreadsheets or
+        a backup you can read.
+      </p>
+      {tables.isPending && <p>Loading…</p>}
+      {tables.isError && (
+        <p role="alert" className="error">
+          {tables.error.message}
+        </p>
+      )}
+      {tables.data && (
+        <ul className="cards">
+          {tables.data.map((table) => (
+            <li key={table}>
+              <a className="button" href={`/api/export/${table}.csv`} download>
+                {table.replaceAll("_", " ")}.csv
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function Settings() {
   const [revealed, setRevealed] = useState<CreatedToken | null>(null);
   return (
@@ -162,6 +197,7 @@ export function Settings() {
       {revealed && <RevealedToken token={revealed} onDismiss={() => setRevealed(null)} />}
       <NewTokenForm onCreated={setRevealed} />
       <TokenList />
+      <ExportSection />
     </>
   );
 }
