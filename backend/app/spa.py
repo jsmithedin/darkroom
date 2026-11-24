@@ -6,6 +6,12 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 # Paths owned by the MCP app rather than the frontend.
 MCP_PREFIXES = ("/mcp", "/.well-known")
 
+# Vite puts a content hash in every file name under /assets, so those never change.
+# Everything else (index.html, the manifest, icons) must be revalidated on each visit so
+# a new deploy is picked up; FileResponse already sends ETag and Last-Modified for that.
+IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+REVALIDATE = {"Cache-Control": "no-cache"}
+
 
 def _owned_by(path: str, prefixes: tuple[str, ...]) -> bool:
     return any(path == p or path.startswith(p + "/") for p in prefixes)
@@ -37,10 +43,11 @@ class RootApp:
             return not_found
         candidate = (self.dist / path.lstrip("/")).resolve()
         if candidate.is_file() and candidate.is_relative_to(self.dist):
-            return FileResponse(candidate)
+            hashed = _owned_by(path, ("/assets",))
+            return FileResponse(candidate, headers=IMMUTABLE if hashed else REVALIDATE)
         if _owned_by(path, ("/assets",)):
             return not_found
         index = self.dist / "index.html"
         if index.is_file():
-            return FileResponse(index)
+            return FileResponse(index, headers=REVALIDATE)
         return not_found
