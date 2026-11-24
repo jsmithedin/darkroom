@@ -32,10 +32,11 @@ from app.spa import RootApp
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
 
-    mcp = build_mcp()
+    mcp = build_mcp(settings, lambda: app.state.engine)
     mcp_app = mcp.streamable_http_app(transport_security=transport_security(settings))
-    # Discovery is available before the SDK's bearer middleware is enabled in task 6.4.
-    mcp_app.routes.extend(oauth_metadata_routes(settings.public_base_url))
+    # Ours go first: the SDK's own protected-resource document lists only the required scope,
+    # but clients must also learn that films:write exists.
+    mcp_app.routes[0:0] = oauth_metadata_routes(settings.public_base_url)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
