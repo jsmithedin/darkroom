@@ -16,6 +16,10 @@ updates:
     groups:
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # Types should match the Node used to build and test (22); move them with the Node image.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -24,3 +28,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Odd-numbered Node releases are never long-term support. Move to an even (LTS) major
+      # on purpose, together with .nvmrc, @types/node and CI, not through a bot PR.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
