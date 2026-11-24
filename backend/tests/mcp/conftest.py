@@ -132,3 +132,78 @@ def mcp_session(mcp_env: McpEnv) -> Callable[[str], Awaitable[AsyncClient]]:
 
 
 __all__ = ["READ", "WRITE", "HEADERS", "INIT", "RESOURCE", "McpEnv", "rpc_body"]
+
+
+async def call_tool(
+    session: AsyncClient, name: str, arguments: dict[str, Any] | None = None, call_id: int = 10
+) -> dict[str, Any]:
+    """Call a tool on an open MCP session and return the JSON-RPC result."""
+    resp = await session.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": call_id,
+            "method": "tools/call",
+            "params": {"name": name, "arguments": arguments or {}},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    return rpc_body(resp)["result"]  # type: ignore[no-any-return]
+
+
+async def list_tools(session: AsyncClient) -> list[dict[str, Any]]:
+    resp = await session.post("/mcp", json={"jsonrpc": "2.0", "id": 9, "method": "tools/list"})
+    return rpc_body(resp)["result"]["tools"]  # type: ignore[no-any-return]
+
+
+async def seed(env: McpEnv) -> dict[str, str]:
+    """Create gear, two rolls, stock and a bulk spool through the REST API."""
+    token = await env.pat(WRITE)
+    async with env.client(token) as c:
+
+        async def make(kind: str, body: dict[str, Any]) -> str:
+            resp = await c.post(f"/api/{kind}", json=body)
+            assert resp.status_code == 201, resp.text
+            return str(resp.json()["id"])
+
+        formats = {f["name"]: f["id"] for f in (await c.get("/api/formats")).json()}
+        g = {
+            "camera": await make("cameras", {"name": "Nikon FM2"}),
+            "lens": await make("lenses", {"name": "50mm f/1.8"}),
+            "film": await make("films", {"name": "Tri-X", "type": "bw", "box_iso": 400}),
+            "developer": await make("developers", {"name": "HC-110"}),
+            "format35": formats["35mm"],
+        }
+        resp = await c.post(
+            "/api/stock-movements",
+            json={
+                "kind": "opening",
+                "film_id": g["film"],
+                "format_id": g["format35"],
+                "occurred_on": "2026-01-01",
+                "rolls": 7,
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        for day, subject in (("2026-11-01", "Harbour"), ("2026-11-10", "Market")):
+            resp = await c.post(
+                "/api/rolls",
+                json={
+                    "dev_date": day,
+                    "camera_id": g["camera"],
+                    "lens_id": g["lens"],
+                    "format_id": g["format35"],
+                    "film_id": g["film"],
+                    "ei": 800,
+                    "developer_id": g["developer"],
+                    "dev_time_min": 9,
+                    "subject": subject,
+                },
+            )
+            assert resp.status_code == 201, resp.text
+        resp = await c.post(
+            "/api/bulk-rolls",
+            json={"label": "Bulk 1", "film_id": g["film"], "length_mm": 30_000_000 // 1000},
+        )
+        assert resp.status_code == 201, resp.text
+    return g
