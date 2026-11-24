@@ -8,5 +8,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+      // A floor, not a target: coverage was about 85% statements when this was set.
+      thresholds: { statements: 80, branches: 75, functions: 75, lines: 80 },
+    },
   },
 });

@@ -9,3 +9,5 @@ frontend/dist/
 import/
 backups/
 dist/
+.coverage
+frontend/coverage/
