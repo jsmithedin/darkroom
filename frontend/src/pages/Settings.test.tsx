@@ -31,6 +31,7 @@ beforeEach(() => {
         tokens = [stored];
         return reply({ ...stored, token: SECRET }, 201);
       }
+      if (url === "/api/export") return reply(["rolls", "stock_movements"]);
       if (url === "/api/tokens") return reply(tokens);
       throw new Error(`unexpected ${url}`);
     }),
@@ -78,4 +79,15 @@ it("creates read-only tokens unless write is ticked", async () => {
   const fetchFn = vi.mocked(fetch);
   const post = fetchFn.mock.calls.find(([, init]) => init?.method === "POST")!;
   expect(JSON.parse(post[1]!.body as string).scopes).toEqual(["films:read"]);
+});
+
+it("offers a CSV download link for each exportable table", async () => {
+  renderSettings();
+  const link = await screen.findByRole("link", { name: "stock movements.csv" });
+  expect(link).toHaveAttribute("href", "/api/export/stock_movements.csv");
+  expect(link).toHaveAttribute("download");
+  expect(screen.getByRole("link", { name: "rolls.csv" })).toHaveAttribute(
+    "href",
+    "/api/export/rolls.csv",
+  );
 });
