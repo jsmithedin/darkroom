@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a new Darkroom commit every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

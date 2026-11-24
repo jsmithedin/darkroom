@@ -114,6 +114,10 @@ Cloudflare setup (tunnel route, the WAF skip rule that stops Claude's servers be
 
 Tunnel: in the cloudflared config add an ingress rule `film.jamielab.uk` -> `http://app:8000` (use the container name `darkroom-app-1` if `app` is ambiguous on the shared network), then add the DNS route. Set `FORWARDED_ALLOW_IPS` to the tunnel network's subnet so `X-Forwarded-*` is trusted only from cloudflared.
 
+## Automatic deploys and monitoring
+
+A systemd timer on the NUC deploys each verified, CI-green commit on `main` and alerts on Telegram if a deploy fails or the app goes down. It pulls from GitHub, so there is no runner and nothing inbound. Setup, checks and operation: `ops/deploy/README.md`.
+
 ## Backups and restore
 
 The `backup` service runs `pg_dump -Fc` once at start-up and then every night at `BACKUP_HOUR` (UTC, default 02:00). Dumps are written to `./backups/darkroom-YYYYMMDD.dump` (gitignored, owned by root, readable by everyone on the host; a second dump on the same day gets a time in its name and nothing is overwritten). Dumps older than `BACKUP_RETENTION_DAYS` (default 14) are deleted, but the newest three are always kept, so a run of bad dumps cannot push out the last good ones. A dump is written to a temporary file and only moved into place after `pg_dump` succeeds and `pg_restore --list` can read it. Restarting the service does not take another dump if one from the last 12 hours exists. Check the last one with `ls -l backups/` or `docker compose logs backup`.
