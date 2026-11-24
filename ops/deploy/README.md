@@ -35,7 +35,9 @@ Needs Docker with compose, git and Python 3.10 or newer (`python3 --version`).
    sudo useradd -r -m -s /usr/sbin/nologin -G docker darkroom-deploy
    sudo install -d -o darkroom-deploy -g darkroom-deploy -m 755 /opt/darkroom
    sudo -u darkroom-deploy git clone https://github.com/jsmithedin/darkroom.git /opt/darkroom/repo
+   sudo install -d -o darkroom-deploy -g darkroom-deploy -m 750 /var/lib/darkroom-deploy
    ```
+   The last line is where the script keeps its state (what is deployed, what failed, alert history). systemd would create it for the timers, but the manual test commands below run outside systemd and need it to exist.
 2. **App environment file** (the real `.env`, outside the checkout):
    ```
    sudo cp /path/to/current/.env /opt/darkroom/.env
