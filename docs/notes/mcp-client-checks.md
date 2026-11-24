@@ -1,18 +1,22 @@
 # MCP client verification (Task 6.7)
 
-**Status: not yet done.** These checks need the deployed server at
-`https://film.jamielab.uk` and real clients, so they are manual. Fill in the
-results below.
+**Status: closed on 2026-11-24 with the OAuth checks not run.** Only the
+personal access token path was verified. The OAuth flow (claude.ai connector
+and Claude Code without a header) is untested against the real clients, so
+treat the PAT as the supported route until someone runs checks 2 and 3.
 
-## 1. Claude Code with a personal access token
+## 1. Claude Code with a personal access token (verified)
 
 1. Create a `films:write` token in the app (Settings).
 2. `claude mcp add --transport http darkroom https://film.jamielab.uk/mcp --header "Authorization: Bearer <token>"`
 3. Ask Claude Code to call `get_stock`.
 
-Result:
+Result: a PAT named "Claude" worked from the Claude client. `get_stock` listed
+the freezer; `record_stock_adjustment` (film "Test", format 110, counted 0)
+fixed a -1 row and appeared on the Activity page as "Token: Claude" (the entry
+records the token name, not an OAuth client).
 
-## 2. claude.ai custom connector (OAuth)
+## 2. claude.ai custom connector (OAuth) - NOT RUN
 
 1. Add the server as a custom connector; choose **Register automatically** (DCR).
 2. Complete sign-in; confirm the consent page lists the scopes and the redirect
@@ -21,7 +25,7 @@ Result:
 
 Result (registration method, redirect URIs used):
 
-## 3. Claude Code with OAuth (no header)
+## 3. Claude Code with OAuth (no header) - NOT RUN
 
 Record the registration method and loopback redirect URI (ephemeral port) it used.
 If OAuth is unworkable in Claude Code, document the PAT path as the supported route.
