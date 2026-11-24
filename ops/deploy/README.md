@@ -90,6 +90,7 @@ Needs Docker with compose, git and Python 3.10 or newer (`python3 --version`).
 - **Restore a backup:** the pre-deploy backup is in `./backups` of the checkout's compose project; see "Backups and restore" in the main README.
 
 ## Security notes
+- The units keep `NoNewPrivileges`, `PrivateTmp` and `ProtectSystem=full`. `ProtectHome=yes` was removed: under it `docker compose` failed inside the service (but worked by hand) because Docker could not read its config from the user's home. The deploy user can control Docker, so that setting added little protection anyway.
 - Anyone who can merge to `main` can run code on the NUC, as with any auto-deploy. `main` is protected (PRs only, all four checks required, admins included); keep two-factor on the GitHub account and read dependency update PRs before merging them.
 - Only the tip of `main` is deployed, and only with a GitHub-verified signature and green checks on that commit. If GitHub stopped signing merges, deploys would refuse and tell you (`REQUIRE_VERIFIED=0` turns the check off).
 - The Telegram token lives in a root-only file read by systemd. If it leaks, revoke it with @BotFather.

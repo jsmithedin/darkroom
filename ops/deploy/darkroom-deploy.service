@@ -13,5 +13,4 @@ ExecStart=/usr/bin/python3 /opt/darkroom/repo/ops/deploy/deployer.py deploy
 TimeoutStartSec=30min
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectHome=yes
 ProtectSystem=full
