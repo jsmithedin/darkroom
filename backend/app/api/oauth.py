@@ -20,10 +20,14 @@ from app.auth.oauth_server import (
     REGISTRATION_WINDOW,
     RESPONSE_TYPES,
     AuthorizationRequest,
+    OAuthFailure,
     RegistrationRequest,
     authorization_server_metadata,
+    exchange_authorization_code,
     issue_authorization_code,
+    refresh_tokens,
     register_client,
+    revoke_token,
     valid_redirect_uri,
 )
 from app.auth.principal import browser_principal
@@ -272,3 +276,84 @@ async def submit_consent(
     if code is None:
         return oauth_error("invalid_request", "This request has already been approved.")
     return client_redirect(authorization, issuer, 303, code=code)
+
+
+TOKEN_HEADERS = PRIVATE_HEADERS | {"Pragma": "no-cache"} | REGISTRATION_CORS
+
+
+@router.options("/oauth/token", include_in_schema=False)
+@router.options("/oauth/revoke", include_in_schema=False)
+async def token_preflight() -> Response:
+    return Response(
+        status_code=204,
+        headers=REGISTRATION_CORS
+        | {
+            "Access-Control-Allow-Methods": "POST",
+            "Access-Control-Allow-Headers": "Content-Type, MCP-Protocol-Version",
+        },
+    )
+
+
+async def known_client(db: AsyncSession, client_id: str) -> OAuthClient | None:
+    if not CLIENT_ID.fullmatch(client_id):
+        return None
+    return await db.get(OAuthClient, client_id)
+
+
+def token_error(failure: OAuthFailure) -> JSONResponse:
+    response = oauth_error(failure.error, failure.description, failure.status)
+    response.headers.update(TOKEN_HEADERS)
+    return response
+
+
+@router.post("/oauth/token", response_model=None)
+async def token(
+    db: DB,
+    grant_type: Annotated[str, Form(max_length=64)],
+    client_id: Annotated[str, Form(max_length=256)],
+    code: Annotated[str | None, Form(max_length=512)] = None,
+    code_verifier: Annotated[str | None, Form(max_length=512)] = None,
+    redirect_uri: Annotated[str | None, Form(max_length=2048)] = None,
+    resource: Annotated[str | None, Form(max_length=2048)] = None,
+    refresh_token: Annotated[str | None, Form(max_length=512)] = None,
+    scope: Annotated[str | None, Form(max_length=256)] = None,
+) -> Response:
+    if await known_client(db, client_id) is None:
+        return token_error(OAuthFailure("invalid_client", "Unknown client.", 401))
+    try:
+        if grant_type == "authorization_code":
+            if code is None or code_verifier is None or redirect_uri is None:
+                raise OAuthFailure(
+                    "invalid_request", "code, code_verifier and redirect_uri are required."
+                )
+            issued = await exchange_authorization_code(
+                db,
+                client_id=client_id,
+                code=code,
+                code_verifier=code_verifier,
+                redirect_uri=redirect_uri,
+                resource=resource,
+            )
+        elif grant_type == "refresh_token":
+            if refresh_token is None:
+                raise OAuthFailure("invalid_request", "refresh_token is required.")
+            issued = await refresh_tokens(
+                db, client_id=client_id, refresh_token=refresh_token, scope=scope
+            )
+        else:
+            raise OAuthFailure("unsupported_grant_type", "Use authorization_code or refresh_token.")
+    except OAuthFailure as failure:
+        return token_error(failure)
+    return JSONResponse(issued.model_dump(), headers=TOKEN_HEADERS)
+
+
+@router.post("/oauth/revoke", response_model=None)
+async def revoke(
+    db: DB,
+    token: Annotated[str, Form(max_length=512)],
+    client_id: Annotated[str, Form(max_length=256)],
+) -> Response:
+    if await known_client(db, client_id) is None:
+        return token_error(OAuthFailure("invalid_client", "Unknown client.", 401))
+    await revoke_token(db, client_id=client_id, token=token)
+    return Response(status_code=200, headers=TOKEN_HEADERS)
