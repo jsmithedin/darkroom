@@ -26,7 +26,8 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy backend/app
       # Docker is available on hosted runners, so testcontainers starts Postgres as usual.
-      - run: uv run pytest
+      # Coverage is a floor, not a target: it was 97% when this was set.
+      - run: uv run pytest --cov=backend/app --cov-fail-under=95
 
   frontend:
     name: frontend
@@ -43,7 +44,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - run: npm test
+      - run: npm test -- --coverage
       - run: npm run build
 
   image:
