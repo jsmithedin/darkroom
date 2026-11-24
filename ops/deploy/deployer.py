@@ -404,7 +404,8 @@ class Deployer:
     def containers_ok(self) -> tuple[bool, str]:
         code, out = self.compose("ps", "--format", "json")
         if code:
-            return False, "docker compose ps failed"
+            # Say why: a bare "failed" gives no clue whether Docker is down or misconfigured.
+            return False, "docker compose ps failed: " + " ".join(out.split())[-300:]
         rows: list[dict[str, Any]] = []
         for line in out.splitlines():
             line = line.strip()

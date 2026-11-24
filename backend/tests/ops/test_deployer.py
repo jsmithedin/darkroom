@@ -361,3 +361,10 @@ def test_health_checks_the_app_and_the_public_url(world: Fake) -> None:
 def test_adopt_records_the_running_commit(world: Fake) -> None:
     assert world.d.adopt() == 0
     assert world.state()["deployed_sha"] == SHA
+
+
+def test_health_alert_says_why_compose_ps_failed(world: Fake) -> None:
+    world.fail = {"ps"}
+    world.d.health()
+    world.d.health()
+    assert world.sent == ["Darkroom is DOWN: docker compose ps failed: boom"]
