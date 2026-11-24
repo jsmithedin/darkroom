@@ -14,14 +14,18 @@ The plugin is `plugins/darkroom-skills`; the repo root also holds
 - A test checks that every tool a skill lists exists in the MCP server, and that every
   tracker tool is covered by at least one skill.
 
-## Verification status (all manual, not done yet)
+## Verification status (2026-11-24, reported by the owner)
 | Route | Status |
 |---|---|
-| Claude Code: `/plugin marketplace add jsmithedin/darkroom` and install | not tried |
-| Desktop: Customize, Plugins, Add marketplace from a repository | not tried; there are user reports of failures with private repos, which should not apply now the repo is public |
-| Desktop: upload a single skill zip (zip layout: `<skill>/SKILL.md`) | not tried; one community guide says `SKILL.md` should be at the archive root, so try that if the first layout is rejected |
-| claude.ai web: upload a skill zip | not tried |
-| Do skills installed on Desktop appear on the phone or claude.ai web? | unknown; user reports say they do not sync. Fallback: a short note in the Claude profile to use the Darkroom tools, confirm writes, money in pence |
-| Skills run correctly against a scratch database | not run; prompts are in `plugins/darkroom-skills/TESTING.md` |
+| Desktop: Customize, Plugins, Add marketplace from a repository (`jsmithedin/darkroom`, public repo) | worked; the skills installed and were picked from plain sentences |
+| Desktop: Darkroom custom connector (URL `https://film.jamielab.uk/mcp`, register automatically, OAuth) | worked after adding it and enabling it for the chat. Until it was added, the stock skill correctly said it could not reach the tools and did not guess a count |
+| Reads (stock, low stock, stats, spend, idle cameras) | worked |
+| Writes (purchase, log roll, refusal, correction) | worked |
+| Claude Code marketplace install | not reported |
+| Single-skill zip upload (claude.ai, Desktop) | not tried |
+| claude.ai web and phone: connector and skills | not reported |
+| Audit entries show "Connector: ..." for OAuth writes | not reported |
+| A week of normal use | not started |
 
-Record the results here (what worked, exact menu names, any layout change needed).
+Open follow-ups: record the phone and web results and the exact menu names, and whether the
+zip layout (`<skill>/SKILL.md`) was accepted, when they are tried.
