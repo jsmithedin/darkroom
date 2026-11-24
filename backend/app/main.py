@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 from starlette.routing import Mount
 
+from app.api import audit as audit_api
 from app.api import auth as auth_api
 from app.api import bulk as bulk_api
 from app.api import devtimes as devtimes_api
@@ -105,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(stats_api.router)
     app.include_router(bulk_api.router)
     app.include_router(devtimes_api.router)
+    app.include_router(audit_api.router)
     app.include_router(docs_api.router)
     app.state.engine = make_engine(settings.database_url)
 

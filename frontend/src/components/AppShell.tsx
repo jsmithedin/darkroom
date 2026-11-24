@@ -19,6 +19,7 @@ export function AppShell() {
           <NavLink to="/purchases">Purchases</NavLink>
           <NavLink to="/dev-times">Dev times</NavLink>
           <NavLink to="/reference">Reference</NavLink>
+          <NavLink to="/audit">Activity</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
         <button type="button" className="link" onClick={() => logout.mutate()}>
