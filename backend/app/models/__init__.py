@@ -1,5 +1,6 @@
 """Import every model module here so `Base.metadata` is complete for Alembic."""
 
+from app.models.audit import AuditEvent
 from app.models.auth import (
     OAuthClient,
     OAuthCode,
@@ -25,6 +26,7 @@ from app.models.rolls import Roll
 from app.models.stock import BulkRoll, StockMovement
 
 __all__ = [
+    "AuditEvent",
     "AppSettings",
     "AuditMixin",
     "Base",

@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { SettingsLayout } from "./components/SettingsLayout";
+import { Audit } from "./pages/Audit";
 import { DevTimes } from "./pages/DevTimes";
 import { Login } from "./pages/Login";
 import { LogRoll } from "./pages/LogRoll";
@@ -31,6 +32,7 @@ export function App() {
               </Suspense>
             } />
           <Route path="/dev-times" element={<DevTimes />} />
+          <Route path="/audit" element={<Audit />} />
           <Route path="/settings" element={<SettingsLayout />}>
             <Route index element={<Settings />} />
             <Route path="bulk" element={<SettingsBulk />} />
