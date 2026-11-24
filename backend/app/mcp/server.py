@@ -8,6 +8,7 @@ from pydantic import AnyHttpUrl
 from app.auth.identity import READ
 from app.auth.verifier import DarkroomTokenVerifier, EngineGetter
 from app.config import Settings
+from app.mcp.read_tools import register_read_tools
 
 
 def build_mcp(settings: Settings, engine: EngineGetter) -> MCPServer:
@@ -24,6 +25,8 @@ def build_mcp(settings: Settings, engine: EngineGetter) -> MCPServer:
             validate_token_resource=True,
         ),
     )
+
+    register_read_tools(mcp, engine)
 
     @mcp.tool()
     def ping() -> str:

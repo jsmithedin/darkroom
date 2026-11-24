@@ -12,7 +12,7 @@ async def test_initialize_with_allowed_host(
     try:
         resp = await c.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         tools = rpc_body(resp)["result"]["tools"]
-        assert [t["name"] for t in tools] == ["ping"]
+        assert "ping" in {t["name"] for t in tools}
     finally:
         await c.aclose()
 
