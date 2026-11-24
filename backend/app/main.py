@@ -13,6 +13,7 @@ from app.api import bulk as bulk_api
 from app.api import devtimes as devtimes_api
 from app.api import docs as docs_api
 from app.api import export as export_api
+from app.api import oauth as oauth_api
 from app.api import reference as reference_api
 from app.api import rolls as rolls_api
 from app.api import settings as settings_api
@@ -95,6 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         f"{settings.public_base_url.rstrip('/')}/api/auth/callback",
     )
     app.include_router(auth_api.router)
+    app.include_router(oauth_api.router)
     app.include_router(tokens_api.router)
     app.include_router(reference_api.router)
     app.include_router(rolls_api.router)

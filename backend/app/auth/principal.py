@@ -40,12 +40,21 @@ async def current_principal(
             raise UNAUTHENTICATED
         return principal
 
+    principal = await browser_principal(request, db)
+    if principal is None:
+        raise UNAUTHENTICATED
+    assert principal.csrf_token is not None
+    check_csrf(request, principal.csrf_token)
+    return principal
+
+
+async def browser_principal(request: Request, db: AsyncSession) -> Principal | None:
+    """Identify a browser session. The caller must enforce CSRF on writes."""
     cookie = request.cookies.get(SESSION_COOKIE)
     found = await lookup_session(db, cookie) if cookie else None
     if found is None:
-        raise UNAUTHENTICATED
+        return None
     session, _user = found
-    check_csrf(request, session.csrf_token)
     return Principal(
         user_id=session.user_id,
         scopes=ALL_SCOPES,

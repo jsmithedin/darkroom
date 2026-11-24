@@ -14,7 +14,7 @@ def _owned_by(path: str, prefixes: tuple[str, ...]) -> bool:
 class RootApp:
     """Catch-all mounted last: sends MCP paths to the MCP app, everything else to the SPA.
 
-    Unknown `/api` paths get a JSON 404 so API clients never receive index.html.
+    Unknown `/api` and `/oauth` paths get a JSON 404.
     """
 
     def __init__(self, mcp_app: ASGIApp, dist: Path) -> None:
@@ -33,7 +33,7 @@ class RootApp:
 
     def _spa(self, path: str, method: str) -> Response:
         not_found = JSONResponse({"detail": "Not Found"}, status_code=404)
-        if _owned_by(path, ("/api",)) or method not in ("GET", "HEAD"):
+        if _owned_by(path, ("/api", "/oauth")) or method not in ("GET", "HEAD"):
             return not_found
         candidate = (self.dist / path.lstrip("/")).resolve()
         if candidate.is_file() and candidate.is_relative_to(self.dist):
