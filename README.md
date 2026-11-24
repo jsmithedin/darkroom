@@ -84,6 +84,18 @@ docker compose run --rm -v "$PWD/import:/import:ro" app python -m app.importer.c
 
 Locally, from the repository root: `PYTHONPATH=backend uv run python -m app.importer.cli ./import`. It prints what it inserted and a reconciliation (117 rolls; 60 in 2025, 57 in 2026; 61 x 35mm and 88 x 120 in stock; Bulk 1 7.3 m left). If any figure differs, or a camera, lens, film, developer, filter or format is unknown, **nothing is imported** and it exits non-zero (1 for a mismatch, 2 for bad input). `--dry-run` checks and rolls back. Re-running inserts nothing.
 
+## Claude skills
+
+`plugins/darkroom-skills` holds four small skills that teach Claude the routine jobs: `darkroom-stock` (what film I have, what is running low), `darkroom-purchase` (purchases, bulk spools, loading cassettes, giving film away), `darkroom-log-roll` (logging and correcting developed rolls) and `darkroom-logs-and-stats` (counts, spend, idle cameras, development times). They use the Darkroom connector's tools, so add the connector first. Each skill confirms before it writes anything and cannot delete.
+
+Install, easiest first (the Desktop routes are not verified yet; see `docs/notes/claude-skills.md`):
+
+- **Claude Code:** `/plugin marketplace add jsmithedin/darkroom`, then `/plugin install darkroom-skills@darkroom`. Update with `/plugin marketplace update`.
+- **Claude Desktop (and Cowork):** Customize, Plugins, Add marketplace, from a repository, `jsmithedin/darkroom`. Needs a paid plan.
+- **Zips, for claude.ai or if the marketplace will not work:** download the zips from the latest `skills-v*` release (or run `python scripts/build_skill_zips.py`), then upload each under Customize (or Settings, Capabilities), Skills, Upload a skill. Re-upload after changes.
+
+Changing a skill: edit its `SKILL.md`. The rules block between the `shared-rules` markers is generated: edit `plugins/darkroom-skills/shared-rules.md` and run `python scripts/sync_skill_rules.py`. CI fails if skills are invalid or out of sync, and a test checks every tool a skill names exists. To release zips, bump the version in `plugin.json`, then tag `skills-vX.Y.Z`. Test prompts are in `plugins/darkroom-skills/TESTING.md`.
+
 ## Native clients
 
 The REST API is independent of the web UI and accepts `Authorization: Bearer drk_...` tokens, so a native app can use a personal access token today. OAuth sign-in for a native app is not supported yet: OAuth tokens only work on `/mcp`. See `docs/notes/frontend-serving-and-native-client.md` for the gaps and the smallest fix.

@@ -1,0 +1,29 @@
+name: Skills release
+
+# Tag skills-vX.Y.Z (matching plugins/darkroom-skills/.claude-plugin/plugin.json) to attach the
+# zips to a GitHub release, for installs that cannot use the marketplace.
+on:
+  push:
+    tags: ["skills-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/sync_skill_rules.py --check
+      - name: Tag matches the plugin version
+        run: |
+          version=$(python -c "import json;print(json.load(open('plugins/darkroom-skills/.claude-plugin/plugin.json'))['version'])")
+          test "skills-v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME does not match plugin version $version"; exit 1; }
+      - run: python scripts/build_skill_zips.py dist/skills
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/skills/*.zip --title "Darkroom skills ${GITHUB_REF_NAME#skills-v}" --notes "Skill zips for claude.ai and Claude Desktop (upload a skill), and the full plugin zip."

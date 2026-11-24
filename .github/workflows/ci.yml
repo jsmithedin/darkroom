@@ -70,3 +70,16 @@ jobs:
           if grep -q '^\s*ports:' /tmp/compose.json; then
             echo "compose.yaml must not publish ports"; exit 1
           fi
+
+  skills:
+    name: skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Skills are valid and share the same rules
+        run: python scripts/sync_skill_rules.py --check
+      - name: Zips build
+        run: python scripts/build_skill_zips.py "$RUNNER_TEMP/zips"

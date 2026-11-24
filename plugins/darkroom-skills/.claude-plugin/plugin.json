@@ -1,0 +1,7 @@
+{
+  "name": "darkroom-skills",
+  "version": "0.1.0",
+  "description": "Skills for the Darkroom film tracker: stock, purchases, logging developed rolls, and logs and statistics. Needs the Darkroom MCP connector.",
+  "author": { "name": "jsmithedin" },
+  "homepage": "https://github.com/jsmithedin/darkroom"
+}
