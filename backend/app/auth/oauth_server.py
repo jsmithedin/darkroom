@@ -1,9 +1,11 @@
+import base64
+import hashlib
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from urllib.parse import parse_qsl, urlsplit
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from mcp.server.auth.handlers.metadata import MetadataHandler
 from mcp.server.auth.routes import (
@@ -13,19 +15,24 @@ from mcp.server.auth.routes import (
 )
 from mcp.shared.auth import OAuthMetadata
 from pydantic import AnyHttpUrl, BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.routing import Route
 
 from app.auth.identity import ALL_SCOPES, READ
 from app.auth.sessions import hash_token
-from app.models import OAuthClient, OAuthCode
+from app.models import OAuthClient, OAuthCode, OAuthToken
 
 AUTHORIZE_PATH = "/oauth/authorize"
 REGISTRATION_LIMIT = 20
 REGISTRATION_WINDOW = timedelta(minutes=1)
 CODE_LIFETIME = timedelta(seconds=60)
+ACCESS_LIFETIME = timedelta(seconds=3600)
+REFRESH_LIFETIME = timedelta(days=30)
+ACCESS_PREFIX = "dro_"
+REFRESH_PREFIX = "drr_"
+CODE_VERIFIER = re.compile(r"[A-Za-z0-9._~-]{43,128}")
 GRANT_TYPES = ("authorization_code", "refresh_token")
 RESPONSE_TYPES = ("code",)
 PKCE_CHALLENGE = re.compile(r"[A-Za-z0-9_-]{43}")
@@ -187,3 +194,155 @@ def oauth_metadata_routes(public_base_url: str) -> list[Route]:
             scopes_supported=metadata.scopes_supported,
         ),
     ]
+
+
+class OAuthFailure(Exception):
+    """An RFC 6749 error response for the token or revocation endpoint."""
+
+    def __init__(self, error: str, description: str, status: int = 400) -> None:
+        super().__init__(description)
+        self.error = error
+        self.description = description
+        self.status = status
+
+
+class IssuedTokens(BaseModel):
+    access_token: str
+    token_type: Literal["Bearer"] = "Bearer"
+    expires_in: int
+    refresh_token: str
+    scope: str
+
+
+def pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _new_token_row(
+    *, client_id: str, user_id: UUID, family_id: UUID, resource: str, scopes: list[str]
+) -> tuple[OAuthToken, IssuedTokens]:
+    access = ACCESS_PREFIX + secrets.token_urlsafe(32)
+    refresh = REFRESH_PREFIX + secrets.token_urlsafe(32)
+    now = datetime.now(UTC)
+    row = OAuthToken(
+        client_id=client_id,
+        user_id=user_id,
+        family_id=family_id,
+        access_token_hash=hash_token(access),
+        refresh_token_hash=hash_token(refresh),
+        resource=resource,
+        scopes=scopes,
+        created_at=now,
+        access_expires_at=now + ACCESS_LIFETIME,
+        refresh_expires_at=now + REFRESH_LIFETIME,
+    )
+    issued = IssuedTokens(
+        access_token=access,
+        expires_in=int(ACCESS_LIFETIME.total_seconds()),
+        refresh_token=refresh,
+        scope=" ".join(scopes),
+    )
+    return row, issued
+
+
+async def exchange_authorization_code(
+    db: AsyncSession,
+    *,
+    client_id: str,
+    code: str,
+    code_verifier: str,
+    redirect_uri: str,
+    resource: str | None,
+) -> IssuedTokens:
+    """Trade a single-use code for tokens after checking PKCE, client, redirect URI, resource."""
+    grant_error = OAuthFailure("invalid_grant", "The authorization code is invalid or expired.")
+    stored = await db.scalar(
+        select(OAuthCode).where(OAuthCode.code_hash == hash_token(code)).with_for_update()
+    )
+    if stored is None or stored.client_id != client_id:
+        raise grant_error
+    now = datetime.now(UTC)
+    # Whatever happens next, the code is spent: a wrong guess cannot be retried.
+    already_used = stored.consumed_at is not None
+    if not already_used:
+        stored.consumed_at = now
+    await db.commit()
+    if already_used or stored.expires_at <= now:
+        raise grant_error
+    if redirect_uri != stored.redirect_uri:
+        raise OAuthFailure("invalid_grant", "The redirect URI does not match the request.")
+    if resource is not None and resource != stored.resource:
+        raise OAuthFailure("invalid_target", "The resource does not match the request.")
+    if not CODE_VERIFIER.fullmatch(code_verifier) or not secrets.compare_digest(
+        pkce_challenge(code_verifier), stored.code_challenge
+    ):
+        raise OAuthFailure("invalid_grant", "The code verifier does not match the challenge.")
+    row, issued = _new_token_row(
+        client_id=client_id,
+        user_id=stored.user_id,
+        family_id=uuid4(),
+        resource=stored.resource,
+        scopes=list(stored.scopes),
+    )
+    db.add(row)
+    await db.commit()
+    return issued
+
+
+async def revoke_family(db: AsyncSession, family_id: UUID) -> None:
+    await db.execute(
+        update(OAuthToken)
+        .where(OAuthToken.family_id == family_id, OAuthToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC))
+    )
+
+
+async def refresh_tokens(
+    db: AsyncSession, *, client_id: str, refresh_token: str, scope: str | None
+) -> IssuedTokens:
+    """Rotate a refresh token. Presenting one that was already rotated revokes its family."""
+    invalid = OAuthFailure("invalid_grant", "The refresh token is invalid or expired.")
+    stored = await db.scalar(
+        select(OAuthToken)
+        .where(OAuthToken.refresh_token_hash == hash_token(refresh_token))
+        .with_for_update()
+    )
+    if stored is None or stored.client_id != client_id:
+        raise invalid
+    now = datetime.now(UTC)
+    if stored.rotated_at is not None or stored.revoked_at is not None:
+        # A rotated or revoked token coming back means it may have been copied.
+        await revoke_family(db, stored.family_id)
+        await db.commit()
+        raise invalid
+    if stored.refresh_expires_at <= now:
+        raise invalid
+    requested = sorted(set(scope.split())) if scope else list(stored.scopes)
+    if not requested or not set(requested).issubset(stored.scopes):
+        raise OAuthFailure("invalid_scope", "Scopes cannot be widened when refreshing.")
+    stored.rotated_at = now
+    row, issued = _new_token_row(
+        client_id=client_id,
+        user_id=stored.user_id,
+        family_id=stored.family_id,
+        resource=stored.resource,
+        scopes=requested,
+    )
+    db.add(row)
+    await db.commit()
+    return issued
+
+
+async def revoke_token(db: AsyncSession, *, client_id: str, token: str) -> None:
+    """Revoke the family holding this access or refresh token. Unknown tokens are ignored."""
+    digest = hash_token(token)
+    stored = await db.scalar(
+        select(OAuthToken).where(
+            or_(OAuthToken.access_token_hash == digest, OAuthToken.refresh_token_hash == digest)
+        )
+    )
+    if stored is None or stored.client_id != client_id:
+        return
+    await revoke_family(db, stored.family_id)
+    await db.commit()
