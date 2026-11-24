@@ -1,0 +1,18 @@
+[Unit]
+Description=Darkroom: check the containers and the app are up, alert on Telegram if not
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=darkroom-deploy
+Group=darkroom-deploy
+EnvironmentFile=/etc/darkroom-deploy.env
+StateDirectory=darkroom-deploy
+ExecStart=/usr/bin/python3 /opt/darkroom/repo/ops/deploy/deployer.py health
+# A failed check exits 1 so it shows in `systemctl status`; the alert is sent by the script.
+TimeoutStartSec=5min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full

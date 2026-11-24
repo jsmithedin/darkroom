@@ -1,0 +1,17 @@
+[Unit]
+Description=Darkroom: deploy the latest verified commit on main
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=darkroom-deploy
+Group=darkroom-deploy
+EnvironmentFile=/etc/darkroom-deploy.env
+StateDirectory=darkroom-deploy
+ExecStart=/usr/bin/python3 /opt/darkroom/repo/ops/deploy/deployer.py deploy
+TimeoutStartSec=30min
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
